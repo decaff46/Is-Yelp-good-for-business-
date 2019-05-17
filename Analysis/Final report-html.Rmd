@@ -1,0 +1,397 @@
+---
+title: "Final paper"
+author: "Team XKL"
+date: "May 4, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+```{r library}
+library(data.table)
+library(DT)
+library(ggplot2)
+library(gridExtra)
+library(leaflet)
+library(flexdashboard)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(Hmisc)
+library(DT)
+library(tidyverse)
+library(scales)
+library(arules)
+library(ggplot2)
+library(gridExtra)
+library(data.table)
+library(base)
+library(ggrepel)
+library(mapdata)
+library(RColorBrewer)
+library(scales)
+library(lattice)
+library(tidyverse)
+# library(dplyr)
+library(magrittr)
+library(plotly)
+library(leaflet,quietly=TRUE)
+library(maps,quietly=TRUE)
+#library(tidytext)
+library(tidyverse)
+library(wordcloud)
+library(stringr)
+library(reshape2)
+```
+# Data Conversion to CSV and Cleaning
+
+To work in the format that we are familiar with, we had to convert the JSON into CSV. Yet, even for this was trouble. Again, the files are too big that we had to take an extra route, RDS file, before we finally get the CSV files. After converting them into CSV, we split the dataset among each other.  
+
+```{r data conversion}
+#Karen plz put the code for convserion here !
+```
+
+
+
+```{r read_data}
+# Business EDA
+business <- fread(input = "~/Applied Data Science/Final Proj/Data/business.csv", verbose = FALSE)
+user <- fread(input = "~/Applied Data Science/Final Proj/Data/user.csv", verbose = FALSE)
+restaurant <- fread(input = "~/Applied Data Science/Final Proj/Data/restaurant.csv")
+
+# Review EDA (part3 data)
+full.restaurant.w.cuisine2<-readRDS("~/Applied Data Science/Final Proj/Data/full.restaurant.w.cuisine2.rds")
+bing_df2<-readRDS("~/Applied Data Science/Final Proj/Data/bing_df2.rds")
+
+# ## Review EDA (part4 data:Sentiment trend data) 
+new.bing_df2<-readRDS("~/Applied Data Science/Final Proj/Data/new.bing_df2.rds")
+
+```
+
+```{r constants}
+cities.name <- c("All", "Phoenix", "Las Vegas")
+business.id.name = "business_id"
+business.name.name = "name"
+address.name= "address"
+city.name = "city"
+state.name = "state"
+zipcode.name = "postal_code"
+latitude.name = "latitude"
+longitude.name = "longitude"
+stars.name = "stars"
+review.coutn.name = "review_count"
+category.name = "categories"
+is.open.name = "is_open"
+cuisine.name = "cuisine.info"
+attributes = business[, c(2,13:51)]
+hour = business[, c(2,53:59)]
+new.business = business[,c(2:12, 52)]
+
+user.id.name = "user_id"
+elite.name = "elite"
+friends.name = "friends"
+average.stars.name = "average_stars"
+helpful.name = "helpful"
+fans.name = "fans"
+num.of.elites.name = "num_of_elites"
+num.of.friends.name = "num_of_friends"
+final.score.name = "final_score"
+influencer.name = "influencer"
+user.key.cols.names <- c("review_count","useful","fans","num_of_elites","num_of_friends")
+
+pattern.attributes <- "Attributes_"
+attributes.list <- names(business)[grep(pattern = pattern.attributes, x = names(business))]
+
+unique.id <- business[, unique(get(business.id.name))]
+unique.name <- business[, unique(get(business.name.name))]
+unique.address <- business[, unique(get(address.name))]
+unique.city <- business[, unique(get(city.name))]
+unique.state <- business[, unique(get(state.name))]
+unique.zipcod <- business[, unique(get(zipcode.name))]
+unique.cuisine <- restaurant[, unique(get(cuisine.name))]
+unique.restaurant <- restaurant[, unique(get(business.id.name))]
+
+num.business <- length(unique.id)
+num.restaurant <- length(unique.restaurant)
+num.cuisine <- length(unique.cuisine)
+
+respondent.variables <- c(city.name, state.name, cuisine.name, review.coutn.name, stars.name)
+dependent.variables <- c(is.open.name)
+
+# Review EDA (part3 data)
+sorted.variables=c("total.sentiment.score","total.num.post","negative","positive","positive.sentiment.ratio")
+top10_afin_result<-full.restaurant.w.cuisine2%>% arrange(desc(total.sentiment.score)) 
+bing_df2<-data.table(bing_df2)
+
+top10.name=as.vector(unlist(unique(bing_df2[ business_id %in% top10_afin_result$business_id[1:10],"name"])))
+type_wordcloud=c("Positive","Negative","Both")
+
+## Review EDA (part4 data)
+top10.year=c(max(new.bing_df2$year):min(new.bing_df2$year))
+top10.month=c(min(new.bing_df2$month):max(new.bing_df2$month))
+```
+
+```{r functions}
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  number.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+count_num <- function(x){
+  l<- unlist(strsplit(x, split=",", fixed = TRUE))
+  return (length(l))
+}
+
+scaling_user <- function(x){
+  return((x-min(x, na.rm=TRUE))/(max(x, na.rm=TRUE)-min(x, na.rm=TRUE)))
+}
+
+convert_date<-function(data,year=T,month=T){
+  datetext<-as.Date(as.POSIXct(data$date))
+df<-data.frame(date=datetext,year=as.numeric(format(datetext,format="%Y")),
+               month = as.numeric(format(datetext,format="%m")))
+ if (year==T){
+data$year<-df$year
+ }
+if(month==T){
+  data$month<-df$month
+}
+return(data)
+}
+```
+
+
+
+# Introduction
+
+It is often said that making ourselves “Visible” online is the key to success. From day one at school, we were told to create a LinkedIn account with a “Good Looking” profile picture. This applies to most of the business as well. Companies pay billions of dollars just to make customers “Aware” of their products or service. However, for a local business, it is difficult to do so for the limited budget and other reasons. Therefore, it is a great niche market. There are many platforms out there that can help local business owners promote their products or service such as Yelp, google map, Trip Advisor, and such. And Yelp is the most famous one. (We chose the Yelp over others not because we like the Yelp more than others but because Yelp dataset was easy to retrieve)   
+Yet, there is one question remained unanswered: Is putting information on Yelp helpful for a local business to grow? If so, how it could help the local business to sustain their business? 
+According to the actual review rate of the Yelp business app users, it says otherwise. Looking at these two different stories, we decided to investigate whether Yelp is beneficial to a local business’s “sustainability”.    
+
+
+# Overview of The Entire Dataset
+
+The Yelp dataset is a subset of Yelp’s businesses, reviews, and user data for use in personal, educational, and academic purposes. The Yelp dataset is a subset of Yelp’s businesses, reviews, and user data for use in personal, educational, and academic purposes. The original goal of the Yelp competition was to predict the star (rate) of a local business given the information. The URL of the original dataset is followed : https://www.yelp.com/dataset/challenge.
+
+The whole dataset consists of six JSON files:
+  1) business.json: Contains business data including location data, attributes, and categories.
+  2) review.json: Contains full review text data including the user_id that wrote the review and the business_id the review is written for.
+  3) user.json: User data including the user's friend mapping and all the metadata associated with the user.
+  4) checkin.json: Checkins on a business.
+  5) tip.json: Tips are written by a user on a business. Tips are shorter than reviews and tend to convey quick suggestions.
+6) photo.json: Contains photo data including the caption and classification (one of "food", "drink", "menu", "inside" or "outside")
+Among the 6 datasets, we only employed the business, review, and user dataset. Each data is moderately huge to deal with. After working on feature engineering and manipulating data to work smoothly, we ended up with 22 GB only with those three.
+
+
+
+# Business Data EDA
+
+```{r Splitting Data}
+# Spliting the business into 3 diff datasets : business, attribute, and hour
+attributes = business[, c(2,13:51)]
+hour = business[, c(2,53:59)]
+new.business = business[,c(2:12, 52)]
+dim(new.business)
+names(new.business)
+```
+
+Business data has 58 variables, including business_id, name, address, city, states, postal_code, latitude/longitude, stars, review_count, is_open, the list of attributes - good for kids, reservation, parking, noise level, and such – and the hour/day of working. Both attributes and hour variable contains too many missing variables and in peculiar format, for instance, {'dessert': False, 'latenight': False, 'lunch': True, 'dinner': True, 'brunch': False, 'breakfast': False}.  We were already behind of schedule, busy with converting the data, decided to move on without these two variables. Yet, we still believe that these two could have an impact on our result. If we had more time, we would definitely work on these variables to incorporate them into our regression. 
+
+```{r Exploring - Category, echo = T}
+# Tracking top famous categories in Yelp business data
+category.tab = data.table(Category = unlist(strsplit(new.business$categories, ",")))
+
+category.tab = category.tab[, .N, by = Category]
+setnames(x = category.tab, old = "N", new = "Count")
+setorderv(x = category.tab, cols = "Count", order = -1)
+
+datatable(category.tab)
+
+# Visualize the Top 10 categories
+top10_category_plot = ggplot(data = category.tab[1:10], aes(x = reorder(Category, Count), y = Count, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(x = Category, y = 1, 
+                label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 3, colour = 'black', fontface = 'bold') +
+  labs(x = 'Category', 
+       y = 'Count', 
+       title = 'Top 10 Category in Yelp') +
+  coord_flip()+
+  theme_bw()
+
+print(top10_category_plot)
+```
+
+Rest of the data was relatively clean: no missing data, no atypical format. From exploring the data, particularly the category variable, we found out that Yelp deals with more than restaurants. They have different types of business, including shopping, insurance, hospital, hotels, bars, party bus, sewing, real estate, restaurants, and other variety of industries. The top categories that Yelp work with are shown in the grpahs.  Coincidentally, among the many categories, restaurants were enlisted the most and we, as foodies, decided to investigate only the restaurants. 
+
+```{r Exploring - extracting restaurants from category, echo = T }
+
+w = new.business[, grepl(pattern = "Restaurants", x = categories)]
+restaurant = new.business[w, ]
+# From now on we will work on restaurant dataset, instead of new.business
+
+# Find what is the most famous cuisine among the ones I named in restaurant
+cuisine.list = c('Ainu', 'Albanian','Argentina','Andhra', 'Anglo-Indian', 'Arab', 'Armenian', 'Assyrian', 'Awadhi', 'Azerbaijani', 'Balochi', 'Belarusian', 'Bangladeshi', 'Bengali',    'Berber', 'Buddhist', 'Bulgarian', 'Cajun', 'Chechen', 'Chinese',    'Chinese Islamic', 'Circassian', 'Crimean Tatar', 'Cypriot', 'Danish', 'Estonian', 'French', 'Filipino', 'Georgian', 'Goan', 
+'Goan Catholic', 'Greek', 'Gujarati', 'Hyderabad', 'Indian', 'Indian Chinese', 'Singaporean', 'Indonesian', 'Inuit', 'Italian American', 'Italian', 'Japanese', 'Jewish', 'Karnataka', 'Kazakh', 'Keralite', 'Korean', 'Kurdish', 'Laotian','Latvian', 'Lithuanian', 'Louisiana Creole', 'Maharashtrian', 'Mangalorean', 'Malay', 'Chinese', 'Malaysian', 'Indian', 'Mediterranean', 'Mexican', 'Mordovian', 'Mughal','Native American', 'Nepalese', 'New Mexican', 'Odia', 'Parsi', 'Pashtun', 'Polish', 'Pennsylvania Dutch', 'Pakistani', 'Peranakan', 'Persian', 'Peruvian', 'Portuguese', 'Punjabi', 'Rajasthani', 'Romanian', 'Russian', 'Sami', 'Serbian', 'Sindhi', 'Slovak', 'Slovenian', 'Somali', 'South Indian', 'Sri Lankan', 'Taiwanese', 'Tatar', 'Thai', 'Turkish', 'Tamil', 'Udupi', 'Ukrainian', 'Yamal', 'Zanzibari', 'American')
+# reference: https://en.wikipedia.org/wiki/List_of_cuisines
+
+# Adding Cuisine.info into the restaurant table.
+categories.list <- strsplit(restaurant$categories, ", ")
+cuisine.info <- c()
+for (i in 1:nrow(restaurant)){
+  if (any(categories.list[[i]]%in% cuisine.list) == FALSE){
+    cuision = "others"
+  } else{
+    cuision <- categories.list[[i]][which(categories.list[[i]] %in% cuisine.list)]
+    if(length(cuision)>1){
+      cuision <- cuision[1]
+    }
+  }
+  cuisine.info <- append(cuisine.info, cuision)
+}
+
+restaurant.w.cuisine = cbind(restaurant,cuisine.info)
+
+restaurant.w.cuisine[cuisine.info %in% c('American (New)', 'Breakfast & Brunch', 'Burgers', 'Fast Food','American (Traditional)', 'Breakfast & Brunch', 'Burgers', 'Barbeque', 'Steakhouses', 'Sandwiches', 'Pizza', 'Hot Dogs'),cuisine.info:="American"]
+restaurant.w.cuisine[cuisine.info %in% c('Soul Food'),cuisine.info:="Korean"]
+restaurant.w.cuisine[cuisine.info %in% c('Sushi Bars'),cuisine.info:="Japanese"]
+
+cuisine.tab <- restaurant.w.cuisine[,.N, by = cuisine.info]
+setnames(cuisine.tab, old = 'cuisine.info', new = "Cuisine")
+setnames(cuisine.tab, old = 'N', new = "Count")
+setorderv(x = cuisine.tab, cols = 'Count', order = -1)
+
+# Visualize the Top 10 cuisine
+top10_cuisine_plot = ggplot(data = cuisine.tab[2:11], aes(x = reorder(Cuisine, Count), y = Count, fill = Cuisine)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(x = Cuisine, y = 1, 
+                label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=-0.5, vjust=.5, size = 3, colour = 'black', fontface = 'bold') +
+  labs(x = 'Cuisine', 
+       y = 'Count', 
+       title = 'Top 10 Cuisine in Yelp') +
+  coord_flip()+
+  theme_bw()
+
+print(top10_cuisine_plot)
+```
+
+When we select a restaurant, the first thing that we do is choose cuisine: Chinese, American, Mexican, Japanese, Korean, and such. Hence, we narrow down the restaurants by cuisines once again. Majority of them were not categorized as we planned. Still, it gave us a good idea which cuisine is the most popular in the United States. Mexican restaurants account for the most in the dataset. This makes sense because the majority of the immigrants in the states are from South America, and they are relatively cheap considering its quality. We presume that if we have the Yelp dataset from another country, then it would be different, i.e., Korean or Japanese restaurants would be the most popular ones in China. Besides, we bump into many Mexican restaurants whether that is food truck or actual restaurants in our daily lives.  
+ 
+
+```{r Exploring City and State }
+# business by state
+state.tab = restaurant.w.cuisine[, .(Count = .N), by = state]
+setorderv(state.tab, cols = 'Count', order = -1)
+
+state_plot = ggplot(data = state.tab[1:10],aes(x = reorder(state, Count),y = Count, fill = state)) +
+  geom_bar(stat='identity',colour="white") +
+  geom_text(aes(x = state, y = 1, label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 4, colour = 'black', fontface = 'bold') +
+  labs(x = 'State', 
+       y = 'Count', 
+       title = 'Top 10 States in Yelp') +
+  coord_flip() + 
+  theme_bw()
+
+# business by city
+city.tab = restaurant.w.cuisine[, .(Count = .N), by = city]
+setorderv(city.tab, cols = "Count", order = -1)
+
+city_plot = ggplot(data = city.tab[1:10],aes(x = reorder(city, Count),y = Count, fill = city)) +
+  geom_bar(stat='identity',colour="white") +
+  geom_text(aes(x = city, y = 1, label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 4, colour = 'black', fontface = 'bold') +
+  labs(x = 'City', 
+       y = 'Count', 
+       title = 'Top 10 Cities in Yelp') +
+  coord_flip() + 
+  theme_bw()
+
+grid.arrange(state_plot, city_plot)
+```
+
+We expanded our exploration on the business data to states and city to have a better understanding of the data. The reason behind this is we wanted to craft a story for at least one or two restaurants as Professor recommended us. Interestingly, we discovered that Ontario, a state in Canada, has the most number of restaurants, followed by Arizona and Nevada. Originally, we wanted to compare the surviving rate between the restaurants in Ontario and that in Arizona; however, when we first convert the data we only took the first 100 thousand data from review. And, we could not find a sufficient number of restaurant review data from the review data. So, we agreed to go with the two most popular states, Arizona and Nevada. In terms of the city, we see that Toronto has the most number of restaurants listed and Las Vegas and Pheonix account for the second and third most. From here, one could claim that restaurants data are not condensed in Pheonix but allocated in many different cities in Pheonix, while most of the restaurant's data from Nevada are from Las Vegas.  
+
+```{r Cities in Arizona}
+AZ_cities_numb = restaurant.w.cuisine[get(state.name) == "AZ", length(unique(get(city.name)))]
+print(AZ_cities_numb) # 57
+
+NV_cities_numb = restaurant.w.cuisine[get(state.name) == "NV", length(unique(get(city.name)))]
+print(NV_cities_numb) # 23
+
+AZ_NV_restaurant_numb = restaurant.w.cuisine[get(state.name) == "AZ" | get(state.name) == "NV", .N]
+print(AZ_NV_restaurant_numb)
+```
+
+To confirmed this assertion, we took a look at the number of cities listed in the dataset for both AZ and NV. And, the number of cities listed under AZ,`r AZ_cities_numb`,  is greater than that under NV,`r NV_cities_numb`.
+
+As we mentioned briefly, our goal was to narrow down our data analysis for either one or two restaurants and craft story out of it, we decided to move along with only AZ and NV.  
+
+
+```{r Exploring Is_open}
+# Overall surviving rate 
+overall.surviving.rate = restaurant.w.cuisine[, .N, by = is.open.name]
+overall.surviving.rate = overall.surviving.rate[1,2]/nrow(restaurant) 
+# Simply take a look at the number of restaurants are open and close
+vegas.open.tab = restaurant.w.cuisine[get(city.name) == "Las Vegas", .N , by = is.open.name]
+phoenix.open.tab = restaurant.w.cuisine[get(city.name) == "Phoenix", .N , by = is.open.name]
+
+
+
+# Calcualting survival rates for both
+vegas.open.tab[, Total := sum(N)]
+vegas.open.tab[, Rate := (N/Total)*100]
+setorderv(vegas.open.tab, cols = 'is_open', order = -1)
+vegas.surviving.rate = vegas.open.tab[1,4]
+
+phoenix.open.tab[, Total := sum(N)]
+phoenix.open.tab[, Rate := (N/Total)*100]
+phoenix.surviving.rate = phoenix.open.tab[1,4]
+
+vegas.surviving.rate > phoenix.surviving.rate
+vegas.open.tab[1,4] > phoenix.open.tab[1,4] 
+```
+
+To calculate the sustainability of restaurants, we consider “Is_open”  variable as our outcome of regression. First, we calculated the overall surviving rates of the entire restaurant, and compare with that of AZ and NV. 
+Overall surviving rate is `r overall.surviving.rate` when that of  Vegas is `r  vegas.surviving.rate` and that of Pheonix is `r phoenix.surviving.rate`.  
+
+In genearl, Vegas has more restaurants, including both still in business and not in business anymore. Yet, the surviving rate in Vegas is lower than Phoenix. In other words, restaurant business is more competitive in Vegas than in Phoenix.
+
+
+```{r Competitiveness by cuisine}
+vegas.surviving = restaurant.w.cuisine[get(city.name) == "Las Vegas", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(vegas.surviving,"# of restaurants",-1)
+datatable(vegas.surviving)
+
+phoenix.surviving = restaurant.w.cuisine[get(city.name) == "Phoenix", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(phoenix.surviving,"# of restaurants",-1)
+datatable(phoenix.surviving)
+```
+
+We did a similar analysis by cuisine. And the following is the result : `r phoenix.surviving`. Except for Mexican restaurants, all other cuisines have lower surviving rate than overall surviving rates. With same reason that it is dataset from US, we could understand the situation. 
+
+
+```{r Star distribution by is_open}
+star.dist.by.open = restaurant.w.cuisine[, .N, by = c(is.open.name, 'stars')]
+
+star.dist.by.open_plot = 
+  ggplot(star.dist.by.open, aes(x = stars, y = N, fill = factor(is_open))) +
+  geom_bar(stat = 'identity',position = 'dodge') +
+  scale_color_brewer(palette = "Spectral") +
+  xlab("Stars") +
+  ylab("Count") +
+  ggtitle("Star Distribution Between Open and Close") +
+  theme(plot.title = element_text(size=9.5))
+
+print(star.dist.by.open_plot)
+```
+
+Lastly, we did compare the star rates between ones are still open and closed. As one can see there is not much of difference between the two except for the number of rates. 

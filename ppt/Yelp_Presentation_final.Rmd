@@ -1,0 +1,766 @@
+---
+title: "5243 Final Project Report"
+author: "Team XKL"
+date: "April 25, 2019"
+#output: html_document
+output: slidy_presentation
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(Hmisc)
+library(DT)
+library(tidyverse)
+library(scales)
+library(arules)
+library(ggplot2)
+library(gridExtra)
+library(data.table)
+library(base)
+library(ggrepel)
+library(mapdata)
+library(RColorBrewer)
+library(scales)
+library(lattice)
+library(tidyverse)
+# library(dplyr)
+library(magrittr)
+library(plotly)
+library(leaflet,quietly=TRUE)
+library(maps,quietly=TRUE)
+#library(tidytext)
+library(tidyverse)
+library(wordcloud)
+library(stringr)
+library(reshape2)
+
+
+assignInNamespace("cedta.override", value = c(data.table:::cedta.override,"rmarkdown"), ns = "data.table")
+
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+```{r read_data, include=FALSE, eval = TRUE}
+business <- fread(input = "~/Applied Data Science/Final Proj/Data/business.csv", verbose = FALSE)
+business.df <- read.csv("~/Applied Data Science/Final Proj/Data/business.csv")
+user <- fread(input = "~/Applied Data Science/Final Proj/Data/user.csv", verbose = FALSE)
+restaurant <- fread(input = "~/Applied Data Science/Final Proj/Data/restaurant.csv")
+
+# Review EDA (part3 data)
+full.restaurant.w.cuisine2<-readRDS("~/Applied Data Science/Final Proj/Data/full.restaurant.w.cuisine2.rds")
+bing_df2<-readRDS("~/Applied Data Science/Final Proj/Data/bing_df2.rds")
+
+# ## Review EDA (part4 data:Sentiment trend data) 
+new.bing_df2<-readRDS("~/Applied Data Science/Final Proj/Data/new.bing_df2.rds")
+```
+
+```{r constants}
+cities.name <- c("All", "Phoenix", "Las Vegas")
+business.id.name = "business_id"
+business.name.name = "name"
+address.name= "address"
+city.name = "city"
+state.name = "state"
+zipcode.name = "postal_code"
+latitude.name = "latitude"
+longitude.name = "longitude"
+stars.name = "stars"
+review.coutn.name = "review_count"
+category.name = "categories"
+is.open.name = "is_open"
+cuisine.name = "cuisine.info"
+attributes = business[, c(2,13:51)]
+hour = business[, c(2,53:59)]
+new.business = business[,c(2:12, 52)]
+
+user.id.name = "user_id"
+elite.name = "elite"
+friends.name = "friends"
+average.stars.name = "average_stars"
+helpful.name = "helpful"
+fans.name = "fans"
+num.of.elites.name = "num_of_elites"
+num.of.friends.name = "num_of_friends"
+final.score.name = "final_score"
+influencer.name = "influencer"
+user.key.cols.names <- c("review_count","useful","fans","num_of_elites","num_of_friends")
+
+pattern.attributes <- "Attributes_"
+attributes.list <- names(business)[grep(pattern = pattern.attributes, x = names(business))]
+
+unique.id <- business[, unique(get(business.id.name))]
+unique.name <- business[, unique(get(business.name.name))]
+unique.address <- business[, unique(get(address.name))]
+unique.city <- business[, unique(get(city.name))]
+unique.state <- business[, unique(get(state.name))]
+unique.zipcod <- business[, unique(get(zipcode.name))]
+unique.cuisine <- restaurant[, unique(get(cuisine.name))]
+unique.restaurant <- restaurant[, unique(get(business.id.name))]
+
+num.business <- length(unique.id)
+num.restaurant <- length(unique.restaurant)
+num.cuisine <- length(unique.cuisine)
+
+respondent.variables <- c(city.name, state.name, cuisine.name, review.coutn.name, stars.name)
+dependent.variables <- c(is.open.name)
+
+# Review EDA (part3 data)
+sorted.variables=c("total.sentiment.score","total.num.post","negative","positive","positive.sentiment.ratio")
+top10_afin_result<-full.restaurant.w.cuisine2%>% arrange(desc(total.sentiment.score)) 
+bing_df2<-data.table(bing_df2)
+
+top10.name=as.vector(unlist(unique(bing_df2[ business_id %in% top10_afin_result$business_id[1:10],"name"])))
+type_wordcloud=c("Positive","Negative","Both")
+
+## Review EDA (part4 data)
+top10.year=c(max(new.bing_df2$year):min(new.bing_df2$year))
+top10.month=c(min(new.bing_df2$month):max(new.bing_df2$month))
+```
+
+```{r functions}
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  number.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+count_num <- function(x){
+  l<- unlist(strsplit(x, split=",", fixed = TRUE))
+  return (length(l))
+}
+
+scaling_user <- function(x){
+  return((x-min(x, na.rm=TRUE))/(max(x, na.rm=TRUE)-min(x, na.rm=TRUE)))
+}
+
+convert_date<-function(data,year=T,month=T){
+  datetext<-as.Date(as.POSIXct(data$date))
+df<-data.frame(date=datetext,year=as.numeric(format(datetext,format="%Y")),
+               month = as.numeric(format(datetext,format="%m")))
+ if (year==T){
+data$year<-df$year
+ }
+if(month==T){
+  data$month<-df$month
+}
+return(data)
+}
+```
+
+```{r cleaned dat}
+## Clean data ################################################################################################################
+
+# NA starts and review count is considered to be 0 
+business.df$stars[is.na(business.df$stars)] <- 0
+business.df$review_count[is.na(business.df$review_count)] <- 0
+
+#NA in Hours is considered to be 00:00
+hours <- grepl("hours.", names(business.df))
+business.df[hours] <- replace(business.df[hours], is.na(business.df[hours]), "00:00")
+business.df[hours] <- lapply(business.df[hours], as.factor)
+
+## restaurants.types ################################################################################################################
+
+restaurants.types <- business.df %>% 
+  select(business_id, city, state, name, address, latitude, longitude, stars, review_count, 
+         Attributes_RestaurantsPriceRange2, categories, stars, is_open) %>%
+  filter(str_detect(categories, "Restaurant")) %>%
+  mutate(categories2 = as.character(categories)) %>%
+  unnest(categories) %>% 
+  as.data.table(.)
+
+# head(business.df)
+```
+
+
+# Introduction
+
+It is often said that making ourselves “Visible” online is the key to success. From day one at school, we were told to create a LinkedIn account with a “Good Looking” profile picture. This applies to most of the business as well. Companies pay billions of dollars just to make customers “Aware” of their products or service. However, for a local business, it is more difficult to do so. Therefore, it is a great niche market. There are many platforms out there that can help local business owners promote their products or service and Yelp is the most famous one.  
+
+
+![](image/yelp2.png){width=60%}
+
+
+# Is Yelp Beneficial to A Business’s Sustainability?
+
+Yet, there is one question remained unanswered: Is putting information on Yelp helpful for a local business to grow? According to the actual review rate of the Yelp business app users, it says otherwise. Looking at these two different stories, we decided to investigate whether Yelp is beneficial to a local business’s “sustainability”.    
+
+![](image/yelp_review.png){width=100%}
+
+# Overview of The Entire Dataset
+
+- The Yelp dataset is a subset of Yelp’s businesses, reviews, and user data for use in personal, educational, and academic purposes. 
+
+- The whole dataset consists of six JSON files:
+  1) business.json: Contains business data including location data, attributes, and categories.
+  2) review.json: Contains full review text data including the user_id that wrote the review and the business_id the review is written for.
+  3) user.json: User data including the user's friend mapping and all the metadata associated with the user.
+  4) checkin.json: Checkins on a business.
+  5) tip.json: Tips written by a user on a business. Tips are shorter than reviews and tend to convey quick suggestions.
+  6) photo.json: Contains photo data including the caption and classification (one of "food", "drink", "menu", "inside" or "outside").
+
+
+# Overview of User Dataset
+
+```{r, echo=TRUE}
+dim(user)
+names(user)
+```
+
+```{r}
+user[, `:=`(eval(num.of.elites.name),count_num(elite)), by= V1]
+user[, `:=`(eval(num.of.friends.name),count_num(friends)), by= V1]
+```
+
+# Number of Reviews Per User
+
+```{r}
+# Summary of number of reviews per user
+user[, summary(get(review.coutn.name))]
+
+# Plot Number of Reviews per User
+ggplot(user)+
+  geom_density(aes(get(review.coutn.name)),fill = "coral3", color="coral3")+
+  labs(title = "Number of Reviews per User")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Plot users with less than 75 reviews
+ggplot(subset(user,get(review.coutn.name)<=75))+
+  geom_histogram(aes(review_count), fill = "coral3", color = "white", binwidth = 4)+
+  labs(title = "Number of Reviews per User (<=75)")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+# Average Rating Per User
+
+```{r}
+# Summary of users' average ratings
+user[, summary(get(average.stars.name))]
+
+# Plot users' average ratings
+ggplot(user)+
+  geom_histogram(aes(get(average.stars.name)),fill = "coral3", color="white", binwidth = 0.1)+
+  labs(title = "Average Ratings")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+# Number of Years Being An Elite Member
+
+```{r}
+# Summary of Number of Years Being A Elite Member
+user[, summary(get(num.of.elites.name))]
+
+# Plot Number of Years Being A Elite Member
+ggplot(user)+
+  geom_histogram(aes(get(num.of.elites.name)),fill = "coral3", color="white", binwidth = 0.5)+
+  labs(title = "Number of Years Being A Elite Member")+ 
+  xlim(-0.5,6.5)+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+# Number of Friends Per User
+
+```{r}
+# Summary of Number of Friends per User
+user[, summary(get(num.of.friends.name))]
+
+# Plot Number of Friends per User
+ggplot(user)+
+  geom_density(aes(get(num.of.friends.name)),fill = "coral3", color="coral3")+
+  labs(title = "Number of Friends per User")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Plot users with less than 30 friends
+ggplot(subset(user,get(num.of.friends.name)<=30))+
+  geom_histogram(aes(get(num.of.friends.name)), fill = "coral3", color = "white", binwidth = 1)+
+  labs(title = "Number of Friends per User (<=30)")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+# Key Attributes of User
+
+```{r}
+# Create a new data.table to store key attributes
+user_key_attributes <- cbind(user[, get(user.id.name)], user[, lapply(X = .SD, FUN = scaling_user), .SDcols = user.key.cols.names])
+setnames(x = user_key_attributes, old = "V1", new = "user_id")
+
+# Calculate final score for each user
+user_key_attributes[,eval(final.score.name):=20*get(review.coutn.name)+20*useful+20*fans+20*num_of_elites+20*num_of_friends]
+
+# Summary of all scores
+#user_key_attributes[, summary(get(final.score.name))]
+
+# Define influencers
+user_key_attributes[, eval(influencer.name):=1*(get(final.score.name) > mean(get(final.score.name))+sd(get(final.score.name)))]
+
+# Summary of influencers
+user_key_attributes[, summary(get(influencer.name))]
+
+datatable(data=user_key_attributes[1:100,lapply(X = .SD, 
+    FUN = "round.numerics", digits = 3)], rownames = FALSE)
+```
+
+# Overview of Business Dataset
+
+```{r, echo=TRUE}
+dim(business)
+datatable(head(restaurant,20), rownames = FALSE)
+```
+
+# Visualization of All Businesses
+
+```{r, out.width="100%"}
+states <- data.table(map_data("state"))
+business_sum <- business[, .(num = .N, mean_stars = mean(get(stars.name)), long = mean(get(longitude.name)), lat = mean(get(latitude.name))), keyby = state.name]
+restaurant_sum <- restaurant[, .(num = .N, mean_stars = mean(get(stars.name)), long = mean(get(longitude.name)), lat = mean(get(latitude.name))), keyby = state.name]
+two_states_reg <- subset(states, (region=="arizona")|(region=="nevada"))
+two_states_sum <- subset(restaurant_sum, (state=="AZ")|(state=="NV"))
+two_cites <- subset(restaurant, (city=="Phoenix")|(city=="Las Vegas"))
+
+
+# Plot all businesses in the U.S.
+ggplot() + 
+  geom_polygon(data = states, aes(x = long, y = lat, group = group), color = "white", fill = "grey") + 
+  coord_fixed(1.3) + guides(fill=FALSE)  +
+geom_point(data=business_sum, aes(x=long, y=lat, colour=mean_stars, size=num)) +
+  scale_size(name="Number of Businesses") +
+  geom_label_repel(data=business_sum, aes(x=long, y=lat, label=state, fill = factor(state)), size=2 ) +
+  labs(title = "All Businesses in the US and Canada") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Top 10 Categories in Business Dataset
+
+```{r}
+# Tracking top famous categories in Yelp business data
+category.tab = data.table(Category = unlist(strsplit(new.business$categories, ",")))
+
+category.tab = category.tab[, .N, by = Category]
+setnames(x = category.tab, old = "N", new = "Count")
+setorderv(x = category.tab, cols = "Count", order = -1)
+
+#datatable(category.tab)
+
+# Visualize the Top 10 categories
+top10_category_plot = ggplot(data = category.tab[1:10], aes(x = reorder(Category, Count), y = Count, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(x = Category, y = 1, 
+                label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 3, colour = 'black', fontface = 'bold') +
+  labs(x = 'Category', 
+       y = 'Count', 
+       title = 'Top 10 Category in Yelp') +
+  coord_flip()+
+  theme_bw()
+
+print(top10_category_plot)
+```
+
+Unlike what we thought, Yelp has other businesses listed in the data besides restaurants. However, the majority of the data is about restauratns and we will only deal with restaurants. Let's take a look at the restaurant data only!
+
+
+# Visualization of All Restaurants
+
+```{r, out.width="100%"}
+ggplot() + 
+  geom_polygon(data = states, aes(x = long, y = lat, group = group), color = "white", fill = "grey") + 
+  coord_fixed(1.3) + guides(fill=FALSE)  +
+geom_point(data=restaurant_sum, aes(x=long, y=lat, colour=mean_stars, size=num)) +
+  scale_size(name="Number of Restaurants") +
+  geom_label_repel(data=restaurant_sum, aes(x=long, y=lat, label=state, fill = factor(state)), size=2 ) +
+  labs(title = "All Restaurants in the US and Canada") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+# City, State, Stars, Cuisine, Review_count
+
+```{r Business, out.width="100%", height = 500}
+inputPanel(
+  selectInput(inputId="respondent_variable", label = "Select Variable:", choices = respondent.variables, selected = respondent.variables[1]),
+  
+  sliderInput(inputId="respondent_number", label = "Select Number of Variables:", min = 1, max = 10, value = 5, step = 1),
+  
+  checkboxInput(inputId = "show_number", label = "Show Number", value = TRUE)
+)
+
+## check box 
+renderPlot({
+  tab <- restaurant[, .N, by = eval(input$respondent_variable)]
+  setorderv(tab, cols = "N", order = -1)
+  
+  tab_n = tab[1 :input$respondent_number,]
+  
+  ggplot(tab_n, aes(x = get(input$respondent_variable), y = N, fill = get(input$respondent_variable))) +
+  geom_bar(stat = 'identity', color = "black") +
+  theme(legend.position = "none") +
+  labs(x = eval(input$respondent_variable), 
+       y = 'Count', 
+       title = sprintf('Top %d %s in Yelp', input$respondent_num_variable, input$respondent_variable)) +
+    if(input$show_number == T){
+      geom_text(aes(label = sprintf("%d", N)), vjust = -0.3, size = 4) 
+    }
+
+})
+```
+
+# Las Vegas Cuisines
+
+```{r}
+vegas.surviving = restaurant[get(city.name) == "Las Vegas", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(vegas.surviving,"# of restaurants",-1)
+#datatable(vegas.surviving)
+
+datatable(data=vegas.surviving[,lapply(X = .SD, 
+    FUN = "round.numerics", digits = 3)], rownames = FALSE)
+```
+
+
+# Las Vegas Top Cuisines
+
+```{r, out.width="100%"}
+inputPanel(
+  sliderInput(inputId = "cuisine_num_lv", label = "Select Number of Cuisines:", min = 1, max = 10, step = 1, value = 4)
+)
+# Plot Pie Chart for Top 4 Cuisines in Las Vegas
+renderPlot({
+  num.res.name <- "# of restaurants"
+  vegas.surviving[, share:=get(num.res.name)/sum(get(num.res.name))]
+
+  p1 <- ggplot(vegas.surviving[2:(2+input$cuisine_num_lv-1)], aes(x="", y=share, fill=cuisine.info)) +
+    geom_bar(stat="identity", width=1, color = "white") +
+    coord_polar("y", start=0) + geom_text(aes(label = paste0(round(share*100), "%")), position = position_stack(vjust = 0.5), color = "white") + 
+  theme_void() + 
+  labs(title = sprintf("Pie Chart for Top %s Cuisines in Las Vegas", input$cuisine_num_lv)) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Plot Las Vegas Only
+  top_n_cuisine_lv <- vegas.surviving[, cuisine.info][2:(2+input$cuisine_num_lv-1)]
+  las.vegas <- subset(restaurant, (city == "Las Vegas") & (cuisine.info %in% top_n_cuisine_lv))
+  #summary(las.vegas[,latitude])
+  #summary(las.vegas[,longitude])
+
+  p2 <- ggplot() + 
+    geom_point(data=las.vegas, aes(x=longitude, y=latitude, colour=factor(cuisine.info), size=review_count)) + ylim(35.98,36.32) + xlim(-115.36,-115.05) +
+    labs(title = "Restaurants in Las Vegas") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  grid.arrange(p1,p2,ncol=2,widths = c(3,5))
+})
+
+```
+![](image/Las_Vegas_Map.png){width=20%, height=50%}
+
+# Phoenix Cuisines
+
+```{r}
+phoenix.surviving = restaurant[get(city.name) == "Phoenix", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(phoenix.surviving,"# of restaurants",-1)
+#datatable(phoenix.surviving)
+datatable(data=phoenix.surviving[,lapply(X = .SD, 
+    FUN = "round.numerics", digits = 3)], rownames = FALSE)
+```
+
+# Phoenix Top Cuisines
+
+```{r, out.width="100%"}
+inputPanel(
+  sliderInput(inputId = "cuisine_num_px", label = "Select Number of Cuisines:", min = 1, max = 10, step = 1, value = 4)
+)
+
+renderPlot({
+  # Plot Pie Chart for Top 4 Cuisines in Phoenix
+  num.res.name <- "# of restaurants"
+  phoenix.surviving[, share:=get(num.res.name)/sum(get(num.res.name))]
+
+  p1 <- ggplot(phoenix.surviving[2:(2+input$cuisine_num_px-1)], aes(x="", y=share, fill=cuisine.info)) +
+    geom_bar(stat="identity", width=1, color = "white") +
+    coord_polar("y", start=0) + geom_text(aes(label = paste0(round(share*100), "%")), position = position_stack(vjust = 0.5), color = "white") + 
+    theme_void() + 
+    labs(title = sprintf("Pie Chart for Top %s Cuisines in Phoenix", input$cuisine_num_px)) +
+    theme(plot.title = element_text(hjust = 0.5))
+
+  # Plot Phoenix Only
+  top_n_cuisine_px <- phoenix.surviving[, cuisine.info][2:(2+input$cuisine_num_px-1)]
+  phoenix <- subset(restaurant, (city == "Phoenix") & (cuisine.info %in% top_n_cuisine_px))
+  #summary(phoenix[,latitude])
+  #summary(phoenix[,longitude])
+
+ p2 <- ggplot() + 
+    geom_point(data=phoenix, aes(x=longitude, y=latitude, colour=factor(cuisine.info), size=review_count)) + ylim(33.28,33.72) + xlim(-112.32,-111.88) +
+    labs(title = "Restaurants in Phoenix") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  grid.arrange(p1,p2,ncol=2,widths = c(3,5))
+})
+
+```
+![](image/Phoenix_map.png){width=20%, height=50%}
+
+# Distribution of Stars by Is_open
+
+```{r Star distribution by is_open}
+star.dist.by.open = restaurant[, .N, by = c(is.open.name, 'stars')]
+
+star.dist.by.open_plot = 
+  ggplot(star.dist.by.open, aes(x = stars, y = N, fill = factor(is_open))) +
+  geom_bar(stat = 'identity',position = 'dodge') +
+  scale_color_brewer(palette = "Spectral") +
+  xlab("Stars") +
+  ylab("Count") +
+  ggtitle("Star Distribution Between Open and Close") +
+  theme(plot.title = element_text(size=9.5))
+
+print(star.dist.by.open_plot)
+```
+
+It seems that star distribution does not tell us much information about why a store is closed when the other store is still open. 
+
+To have a better understanding of what affect surviving rate in those two cities, we will use text mining and machine learning predcition models find out the key features.
+
+
+
+# Interactive Map to View Open/Close Restaurants
+
+```{r map_input, out.width="100%"}
+inputPanel(
+  selectInput(inputId="area", label = "Area:", choices = cities.name, selected = cities.name[1]),
+  checkboxInput(inputId = "open_checkbox", label = "Only show open restaurants", value=TRUE)
+  
+  # selectInput(inputId="cat", label = "Cuisines:", choices = cities.name, selected = cities.name[1])
+  # selectInput(inputId="area", label = "Area:", choices = cities.name, selected = cities.name[1])
+)
+
+subdat <- restaurants.types[get(city.name) %in% "Phoenix"]
+
+renderLeaflet({
+  
+  # Filter Area
+  if (input$area != "All") {
+      subdat <- restaurants.types[get(city.name) %in% input$area]
+    }else
+      subdat <- restaurants.types
+  
+  # # Filter by category
+  # if (input$cat != "All") {
+  #     m <- m[which(grepl(input$business_category, m$categories)), ]
+  #   }else
+  #     subdat <- business.df
+    
+  # Filter open business
+  if (input$open_checkbox==TRUE) {
+    subdat <- subdat[get(is.open.name)==1]
+    }else
+      subdat <- subdat
+
+  pop <- paste0("<strong>City: </strong>",
+                  subdat$city, "<br>",
+                  "<strong>Business: </strong>",
+                  subdat$name, "<br>",
+                  "<strong>Categories: </strong>",
+                  subdat$categories, "</br>",
+                  "<strong>Price Range: </strong>",
+                  subdat$Attributes_RestaurantsPriceRange2, "<br>",
+                  "<strong>Stars: </strong>",
+                  subdat$stars)
+  
+  pal = colorFactor(c('#B5AFEB','#E7F3B6'), domain = subdat$is_open)
+  
+  subdat %>%
+    leaflet() %>%
+    # addTiles() %>%
+    addTiles(urlTemplate = "http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png")  %>%
+    # setView(lat = 36.164277, lng = -115.1111, zoom = 12) %>%
+    mapOptions(zoomToLimits="always") %>%
+    addCircles(~longitude, ~latitude, color = ~pal(subdat$is_open), weight = 3, opacity = 0.7,popup = pop, group = "Restaurants") %>%
+    addMarkers(lat=subdat$latitude, lng=subdat$longitude,
+    clusterOptions = markerClusterOptions(), popup=pop)
+  })
+```
+
+
+# Overview of Review Dataset 
+
+There are 6685900 observations (reviews) and 9 variables in total (Almost 5 GB).
+
+![](image/full_review.png){width=70%}
+
+# About the Text mining and Sentiment Analysis (Unigrams/single words)
+
+- Reason for doing this: Instead of just looking at star rates, reviews from users (customers) obtain more valuable information.
+
+- Package: tidytext, dplyr, tidyverse, stringr ...
+
+- step: 
+1) Converting: Converting text into tidy format (a table with one-token-per-row)
+2) Cleaning: Cleaning up redundant words such as,stop words,whitespace,punctuaction,number...(data_clean)
+
+![](image/data_clean code.png){width=50%}
+
+![](image/data_clean.png){width=50%}
+
+![Reference:https://www.tidytextmining.com/sentiment.html](image/flowchart.png){width=50%}
+
+3) Detecting: Using "Sentiment Lexicon" ("AFINN" and "bing") to detect the emotion or opinion in our text word by word.
+
+- "AFINN" lexicon: assignes words with a score (-5 to 5)
+
+- "bing"  lexicon: categorizes words as "positive" or "negative"
+
+![](image/Afinn code.png){width=30%}
+
+![](image/Bing code.png){width=30%}
+
+4) Summary: Calculation of Total Sentiment Score:
+
+- "AFINN": sum up the idividual sentiment scores for each word in each post for each business.
+- "bing" : # of positive words - # of negative words
+
+5) Plot for Visualization.
+
+Top 10 Business (Restaurant in Phoenix and Las Vegas) by sentiment score
+
+- Data table version
+
+```{r  out.width="30%"}
+inputPanel(
+  selectInput(inputId = "sorted.variables",label="Select varibales for sorting:",choices =sorted.variables, selected = sorted.variables[1]),
+  sliderInput(inputId = "num_business", label = "Number of Restaurant", min = 1, max = 20, value = 5, step = 1)
+)
+renderDataTable({
+  top10_afin_result<-full.restaurant.w.cuisine2%>% arrange(desc(get(input$sorted.variables))) 
+  datatable(data.table(top10_afin_result[1:input$num_business,c(1:2,9,12:18)]))
+})
+```
+
+# Wordcloud for Top 10 business
+
+```{r  out.width="30%"}
+
+inputPanel(
+  selectInput(inputId = "top10.name",label="Select Restaurant Name:",choices=top10.name,selected=top10.name[1],multiple=TRUE),
+  selectInput(inputId = "pos.or.neg",label="Select type of wordcloud",choices =type_wordcloud,selected =type_wordcloud[1],multiple = TRUE),
+  sliderInput(inputId = "freq", label = "Minimum Frequency", min = 1, max = 50, value = 5, step = 1),
+  sliderInput(inputId = "num_words", label = "Maximum number of Words", min = 1, max = 200, value = 5, step = 1)
+)
+
+renderPlot({
+  
+
+wc_df<-bing_df2[name %in% input$top10.name] %>% 
+                        group_by(word,sentiment) %>% 
+                            summarise(count=n()) %>% 
+                        spread(sentiment,count,fill=0)
+
+# Positive wordcloud
+if(input$pos.or.neg=="Positive"){
+  
+wc_df %>%
+    with(wordcloud(word,positive,
+                   min.freq =input$freq ,
+                   max.words=input$num_words,
+                   col=rainbow(10),
+                   main="Positive Words Wordcloud"))
+  
+}else if(input$pos.or.neg=="Negative"){
+  
+#Negative wordcloud
+wc_df %>%
+    with(wordcloud(word,negative,
+                   min.freq =input$freq,
+                   max.words=input$num_words,
+                   col=rainbow(10),
+                   main="Negative Words Wordcloud"))
+  
+}else if (input$pos.or.neg=="Both"){
+  
+bing_df2[name %in% input$top10.name]  %>%
+    count(word,sentiment,sort=T) %>% 
+    acast(word~sentiment,value.var="n",fill=0) %>%
+    comparison.cloud(color=c("grey80","grey30"),title.siz=3,max.words=input$num_words)
+}
+
+})
+
+```
+
+#Sentiment Trend Across Time
+
+```{r Sentiment Trend}
+
+inputPanel(
+  selectInput(inputId = "name",label="Select Restaurant Name:",choices=top10.name,selected=top10.name[1],multiple=TRUE),
+  selectInput(inputId = "year",label="Select Year:",choices =top10.year,selected = top10.year[1],multiple=TRUE),
+  selectInput(inputId="month",label="Select month:",choices=top10.month,selected=top10.month[1:12],multiple=TRUE),
+  checkboxInput(inputId = "general.trend",label="Show General Trend",value=FALSE)
+)
+
+#input=list(name=top10.name,year=top10.year[1],month=top10.month[1:12])
+renderPlot({
+ 
+  if(input$general.trend==T){
+     df1<-new.bing_df2[name %in% input$name & year %in% input$year & month %in% input$month] 
+     df1$date<-format(as.POSIXct(df1$date,format='%Y-%m-%d %H:%M:%S'),format='%Y/%m/%d')
+     df2<-df1%>%group_by(date)%>%count(sentiment)%>% spread(sentiment, n, fill = 0) 
+     df2<-data.frame(df2)
+     df2$sentiment<-df2$positive-df2$negative
+    ggplot(df2,aes(factor(date),sentiment,fill=factor(sentiment))) +geom_col(show.legend = F)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+xlab("Date")
+  }else{
+     
+  df1<-new.bing_df2[name %in% input$name & year %in% input$year & month %in% input$month]    
+  df2<-df1%>%group_by(year,month)%>%count(sentiment)%>% spread(sentiment, n, fill = 0) 
+  df2<-data.frame(df2)
+  df2$sentiment<-df2$positive-df2$negative
+
+  ggplot(df2,aes(factor(month),sentiment,fill=factor(month))) +geom_col(show.legend = F)+facet_wrap(~factor(year),scales = "free_x") +xlab("Month")
+  }
+
+})
+
+```
+
+# A Close Look At Specified Months for Change of Sentiment
+
+![General Trend](image/General Trend.png){width=70%}
+
+
+![](image/Top 10 business.png){width=70%}
+
+# Prediction
+## Variables Included for Prediction
+![](image/pd_var.png)
+
+# Correlation Plot
+![](image/result2.png){width=80%}
+
+# Prediction Models
+- Classification Tree
+- Random Forest
+- Logistic Regression
+- Support Vector Machine
+- KNN
+- Naive Bayes
+
+# Logistic Regression
+![](image/result1.png){width=80%}
+
+# Results
+## Error Table
+![](image/result3.png){width=80%}
+
+## ROC Curve
+![](image/result4.png){width=80%}
+
+
+

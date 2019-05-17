@@ -1,0 +1,1552 @@
+---
+title: "GR 5243 Final Report"
+subtitle: "Team XKL"
+author: 
+- Caffrey Lee cl3802
+- Yvette Shi ys3137
+- Jinrong Cao jc4515
+- Biying Deng bd2532
+output:
+  html_document:
+    theme: paper
+    highlight: zenburn
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  # cache = TRUE, 
+  # cache.lazy = FALSE, 
+  echo = TRUE, 
+  comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+
+DT.extensions = c('Responsive', 
+                  'Scroller', 
+                  'KeyTable', 
+                  'Buttons',
+                  'FixedHeader')
+options(DT.options = list(
+                paging=T,
+                fixedHeader=TRUE,
+                # scrollX='400px', 
+                scroller = TRUE,
+                scrollY = 450,
+                # scrollCollapse =TRUE, 
+                dom = 'Bfrtip',
+                buttons = I('colvis'),
+                # pageLength=10,
+                keys = TRUE
+                )
+        )
+```
+
+```{r library}
+library(data.table)
+library(DT)
+library(ggplot2)
+library(gridExtra)
+library(leaflet)
+library(flexdashboard)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(Hmisc)
+library(DT)
+library(tidyverse)
+library(scales)
+library(base)
+library(ggrepel)
+library(mapdata)
+library(RColorBrewer)
+library(lattice)
+library(magrittr)
+library(plotly)
+library(leaflet,quietly=TRUE)
+library(maps,quietly=TRUE)
+library(tidytext)
+library(wordcloud)
+library(stringr)
+library(reshape2)
+library(ROCR)
+library(tree)
+library(randomForest)
+library(maptree)
+library(class)
+library(gbm)
+library(e1071)
+#library(imager)
+library(rpart)
+library(caret)
+library(purrr)
+library(adabag)
+```
+
+# Introduction
+
+It is often said that making ourselves “Visible” online is the key to success. From day one at school, we were told to create a LinkedIn account with a “Good Looking” profile picture. This applies to most of the business as well. Companies pay billions of dollars just to make customers “Aware” of their products or service. However, for a local business, it is difficult to do so for the limited budget and other reasons. Therefore, it is a great niche market. There are many platforms out there that can help local business owners promote their products or service such as Yelp, google map, Trip Advisor, and such. And Yelp is the most famous one. (We chose the Yelp over others not because we like the Yelp more than others but because Yelp dataset was easy to retrieve)   
+Yet, there is one question remained unanswered: Is putting information on Yelp helpful for a local business to grow? If so, how it could help the local business to sustain their business? 
+According to the actual review rate of the Yelp business app users, it says otherwise. Looking at these two different stories, we decided to investigate whether Yelp is beneficial to a local business’s “sustainability”.    
+
+# Data Description
+
+## Data Conversion to CSV and Cleaning
+
+To work in the format that we are familiar with, we had to convert the JSON into CSV. Since files are too big, we had to take an extra route. We first saved them as RDS file, before we finally write them to the CSV files. 
+
+```{r data conversion}
+library(jsonlite)
+##Get business from JSON (need reconstruction)
+#biz <- stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/business.json"))
+#biz2<-data.frame(cbind(biz[,1:11],biz$attributes,biz[,13],biz$hours)) #reconstructe data into data.frame
+#colnames(biz2)[51]<-colnames(biz)[13]
+
+# Data cleaning of business:
+#Part 1: Rename variables
+#setnames(x=biz2,old = names(biz2)[12:50],new=sprintf("Attributes_%s",names(biz2)[12:50]))
+#setnames(x=biz2,old = names(biz2)[52:58],new=sprintf("Hours_%s",names(biz2)[52:58]))
+#names(biz2)
+
+
+## Get other 5 dataset from JSON
+#full_review <- stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/review.json"))
+#user<- stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/user.json"))
+#tip<-stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/tip.json"))
+#checkin<-stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/checkin.json"))
+#photo<-stream_in(file("~/Desktop/Apply DS/Final Project/Data/yelp_dataset/photo.json"))
+
+
+## save all 6 datasets in csv
+
+#write.csv(biz2,file="business.csv")
+#saveRDS(full_review,"full_review.rds")
+#write.csv(user,file="user.csv",row.names=FALSE)
+#write.csv(tip,file="tip.csv",row.names=FALSE)
+#write.csv( checkin,file="heckin.csv",row.names=FALSE)
+#write.csv( photo,file="photo.csv",row.names=FALSE)
+```
+
+```{r read_data p1}
+# Business EDA
+business <- fread(input = "../Data/business.csv", verbose = FALSE)
+# business.df <- read.csv("../Data/business.csv")
+user <- fread(input = "../Data/user.csv", verbose = FALSE)
+restaurant <- fread(input = "../Data/restaurant.csv", verbose = FALSE)
+```
+
+```{r read_data, include=FALSE}
+ # Review EDA (part3 data)
+full.restaurant.w.cuisine2<-readRDS("../Data/full.restaurant.w.cuisine2.rds", refhook = NULL)
+bing_df2<-readRDS("../Data/bing_df2.rds", refhook = NULL)
+
+# Review EDA (part4 data:Sentiment trend data)
+new.bing_df2<-readRDS("../Data/new.bing_df2.rds", refhook = NULL)
+
+# For Model Fitting
+DT <- readRDS("../Data/full.restaurant.w.cuisine.rds", refhook = NULL)
+```
+
+```{r constants}
+cities.name <- c("All", "Phoenix", "Las Vegas")
+business.id.name = "business_id"
+business.name.name = "name"
+address.name= "address"
+city.name = "city"
+state.name = "state"
+zipcode.name = "postal_code"
+latitude.name = "latitude"
+longitude.name = "longitude"
+stars.name = "stars"
+review.coutn.name = "review_count"
+category.name = "categories"
+is.open.name = "is_open"
+cuisine.name = "cuisine.info"
+attributes = business[, c(2,13:51)]
+hour = business[, c(2,53:59)]
+new.business = business[,c(2:12, 52)]
+
+user.id.name = "user_id"
+elite.name = "elite"
+friends.name = "friends"
+average.stars.name = "average_stars"
+helpful.name = "helpful"
+fans.name = "fans"
+num.of.elites.name = "num_of_elites"
+num.of.friends.name = "num_of_friends"
+final.score.name = "final_score"
+influencer.name = "influencer"
+user.key.cols.names <- c("review_count","useful","fans","num_of_elites","num_of_friends")
+
+pattern.attributes <- "Attributes_"
+attributes.list <- names(business)[grep(pattern = pattern.attributes, x = names(business))]
+
+unique.id <- business[, unique(get(business.id.name))]
+unique.name <- business[, unique(get(business.name.name))]
+unique.address <- business[, unique(get(address.name))]
+unique.city <- business[, unique(get(city.name))]
+unique.state <- business[, unique(get(state.name))]
+unique.zipcod <- business[, unique(get(zipcode.name))]
+unique.cuisine <- restaurant[, unique(get(cuisine.name))]
+unique.restaurant <- restaurant[, unique(get(business.id.name))]
+
+num.business <- length(unique.id)
+num.restaurant <- length(unique.restaurant)
+num.cuisine <- length(unique.cuisine)
+
+respondent.variables <- c(city.name, state.name, cuisine.name, review.coutn.name, stars.name)
+dependent.variables <- c(is.open.name)
+
+# Review EDA (part3 data)
+sorted.variables=c("total.sentiment.score","total.num.post","negative","positive","positive.sentiment.ratio")
+top10_afin_result<-full.restaurant.w.cuisine2%>% arrange(desc(total.sentiment.score)) 
+bing_df2<-data.table(bing_df2)
+
+top10.name=as.vector(unlist(unique(bing_df2[ business_id %in% top10_afin_result$business_id[1:10],"name"])))
+type_wordcloud=c("Positive","Negative","Both")
+
+## Review EDA (part4 data)
+top10.year=c(max(new.bing_df2$year):min(new.bing_df2$year))
+top10.month=c(min(new.bing_df2$month):max(new.bing_df2$month))
+
+cuisine_american <- c('American', 'American (New)', 'Breakfast & Brunch', 'Burgers', 'Fast Food','American (Traditional)', 'Breakfast & Brunch', 'Burgers', 'Barbeque', 'Cheesesteaks', "Cajun/Creole", 'Steakhouses', 'Sandwiches', 'Pizza', 'Hot Dogs',"Chicken Wings", "Hawaiian", "Delis", "Soul Food", "Diners", "Bagels")
+cuisine_bars <- c("Bars","Beer Bar","Breweries","Dive Bars","Cocktail Bars","Music Venues","Nightlife","Sports Bars","Wine Bars","Pubs","Gastropubs","Lounges","Karaoke","Dance Clubs")
+cuisine_cafe <- c("Cafes","Bubble Tea","Bakeries","Breakfast & Brunch","Bagels","Juice Bars & Smoothies","Coffee & Tea","Ice Cream & Frozen Yogurt")
+cuisine_asian <-c("Asian","Asian Fusion")
+cuisine_Vietnamese <- c("Vietnamese", "Pho")
+cuisine_vege <-c("Vege", "Gluten-Free","Vegetarian","Vegan")
+
+cuisine_south_asia <- c("South_Asia", "Bangladeshi", "Indian","Pakistani", "Sri Lankan")
+# cuisine_east_asia <- c("East_Asia", "Chinese", "Japanese","Korean")
+cuisine_se_asia <- c("South_East_Asia", "Filipino", "Indonesian", "Laotian","Malaysian", "Singaporean", "Vietnamese")
+cuisine_europe <- c("European", "French", "Greek","Italian","Portuguese","Polish","Russian","Ukrainian")
+
+cuisine_ls <- c(cuisine_american, cuisine_bars, cuisine_cafe, cuisine_asian, cuisine_Vietnamese, cuisine_vege)
+# levels(as.factor(DT$cuisine.info))
+
+N <- 10000
+c("Classification Tree", "Random Forest", "Logistic Regression", "Support Vector Machine", "KNN", "Naive Bayes") -> ls.models
+
+count.fig = 1; count.table = 1
+```
+
+```{r functions}
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+count_num <- function(x){
+  l<- unlist(strsplit(x, split=",", fixed = TRUE))
+  return (length(l))
+}
+
+scaling_user <- function(x){
+  return((x-min(x, na.rm=TRUE))/(max(x, na.rm=TRUE)-min(x, na.rm=TRUE)))
+}
+
+fill_in_NA <- function(cuisine_ls){
+  for(i in cuisine_ls){
+    DT[, "idx" := str_detect(DT$categories, i)]
+    DT[get("idx") == 1, eval(cuisine.name) := cuisine_ls[1]]
+    # DT[get("idx") == 1 & is.na(get(cuisine.name))==TRUE, eval(cuisine.name) := cuisine_ls[1]]
+    DT[,"idx":=NULL]
+  }
+}
+
+erate <- function(predicted.value, true.value){
+  return(mean(true.value!=predicted.value))
+}
+
+#Set formula
+create.formula <- function(outcome.name, input.names, input.patterns = NA, 
+                           all.data.names = NA, return.as = "character") {
+  variable.names.from.patterns <- c()
+  if (!is.na(input.patterns[1]) & !is.na(all.data.names[1])) {
+    pattern <- paste(input.patterns, collapse = "|")
+    variable.names.from.patterns <- all.data.names[grep(pattern = pattern, x = all.data.names)]
+  }
+  all.input.names <- unique(c(input.names, variable.names.from.patterns))
+  all.input.names <- all.input.names[all.input.names != outcome.name]
+  if (!is.na(all.data.names[1])) {
+    all.input.names <- all.input.names[all.input.names %in%
+    all.data.names]
+  }
+  input.names.delineated <- sprintf("`%s`", all.input.names)
+  the.formula <- sprintf("`%s` ~ %s", outcome.name, paste(input.names.delineated, collapse = " + "))
+  if (return.as == "formula") {
+    return(as.formula(the.formula))
+  }
+  if (return.as != "formula") {
+    return(the.formula)
+  }
+}
+
+reduce.formula <- function(dat,the.initial.formula, max.categories= NA){
+  require(data.table)
+  dat <- setDT(dat)
+  
+  the.sides <- strsplit(x= the.initial.formula, split="~")[[1]]
+  lhs <- trimws(x=the.sides[1], which="both")
+  lhs.original <- gsub(pattern = "'",replacement="",x=lhs)
+  if (!(lhs.original %in% names(dat))){
+    return("Error: Outcome variable is not in names(dat).")
+  }
+  the.pieces.untrimmed <- strsplit(x= the.sides[2], split= "+", fixed =T)[[1]]
+  the.pieces.untrimmed.2 <- gsub(pattern = "'",replacement = "",x= the.pieces.untrimmed, fixed = T)
+  the.piece.in.names <- trimws(x= the.pieces.untrimmed.2,which = "both")
+  
+  the.pieces <- the.piece.in.names[the.piece.in.names %in% names(dat)]
+  num.variables <- length(the.pieces)
+  include.pieces <- logical(num.variables)
+  
+  for (i in 1:num.variables){
+    unique.values <- dat[,unique(get(the.pieces[i]))]
+    num.unique.values <- length(unique.values)
+    if (num.unique.values >= 2){
+      include.pieces[i] <- TRUE
+    }
+    if (!is.na(max.categories)){
+      if (dat[, is.character(get(the.pieces[i]))|is.factor(get(the.pieces[i]))]==TRUE) {
+        if (num.unique.values > max.categories){
+          include.pieces[i] <- FALSE
+        }
+      }
+    }
+  }
+  pieces.rhs <- sprintf("'%s'", the.pieces[include.pieces == TRUE])
+  rhs <- paste(pieces.rhs,collapse = "+")
+  the.formula <- sprintf("%s ~%s",lhs,rhs)
+  return(the.formula)
+}
+
+eval.dat <- function(x){
+  return(eval(as.name(x)))
+}
+
+### Business
+fill_in_NA <- function(cuisine_ls){
+  cat = cuisine_ls[1]
+  # print(cat)
+  for(i in cuisine_ls){
+    DT[, "idx" := str_detect(DT$categories, i)]
+    # DT[get("idx") == 1, eval(cuisine.name) := cuisine_ls[1]]
+    DT[get("idx") == 1 & is.na(get(cuisine.name))==TRUE, eval(cuisine.name) := cat]
+    DT[,"idx":=NULL]
+  }
+}
+
+combine_regions <- function(region_ls){
+  cat = region_ls[1]
+  for(i in region_ls){
+    DT[, "idx" := str_detect(DT$cuisine.info, i)]
+    DT[get("idx") == 1, eval(cuisine.name) := cat]
+    DT[,"idx":=NULL]
+  }
+}
+
+fill_results <- function(result, model_name){
+  record[model_name, ] <<- result[[1]]
+  auc[, model_name] <<- result[[2]]
+}
+```
+
+## Overview of The Entire Dataset
+
+The Yelp dataset is a subset of Yelp’s businesses, reviews, and user data for use in personal, educational, and academic purposes. The Yelp dataset is a subset of Yelp’s businesses, reviews, and user data for use in personal, educational, and academic purposes. The original goal of the Yelp competition was to predict the star (rate) of a local business given the information. The URL of the original dataset is followed : https://www.yelp.com/dataset/challenge.
+
+The whole dataset consists of six JSON files:
+
+  1) `business.json`: Contains business data including location data, attributes, and categories.
+  
+  2) `review.json`: Contains full review text data including the user_id that wrote the review and the business_id the review is written for.
+  
+  3) `user.json`: User data including the user's friend mapping and all the metadata associated with the user.
+  
+  4) `checkin.json`: Checkins on a business.
+  
+  5) `tip.json`: Tips are written by a user on a business. Tips are shorter than reviews and tend to convey quick suggestions.
+  
+  6) `photo.json`: Contains photo data including the caption and classification (one of "food", "drink", "menu", "inside" or "outside")
+  
+Among the 6 datasets, we only employed the business, review, and user dataset. Each data is moderately huge to deal with. After working on feature engineering and manipulating data to work smoothly, we ended up with 22 GB only with those three.
+
+
+# Data visualization
+## User Data
+
+The User dataset contains more than 1.6 million unique users, along with 23 variables for each user, including basic information like id and name, as well as attributes like number of reviews given, elite membership years, and average stars given. The last 11 variables are attributes from the compliment function on Yelp, where other users can send compliments on a particular post. Due to time constraints, we chose not to incorporate those attributes into our EDA.
+
+```{r}
+# dim(user)
+# names(user)
+```
+
+```{r}
+# Add two new columns to store number of years being elite member and number of friends
+user[, `:=`(eval(num.of.elites.name),count_num(elite)), by= V1]
+user[, `:=`(eval(num.of.friends.name),count_num(friends)), by= V1]
+```
+
+### Number of Reviews Per User
+
+We started off by taking a deeper look at number of reviews per user. From the summary and density plot, we could see that the majority of users do not post many reviews, but a few users posted up to 13278 reviews. When we narrowed down to users with up to 75 posts, it is clear to conclude that most users posted less than 10 posts.
+
+```{r}
+# Summary of number of reviews per user
+# user[, summary(get(review.coutn.name))]
+
+# Plot Number of Reviews per User
+ggplot(user)+
+  geom_density(aes(get(review.coutn.name)),fill = "coral3", color="coral3")+
+  labs(title = "Number of Reviews per User")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Plot users with less than 75 reviews
+ggplot(subset(user,get(review.coutn.name)<=75))+
+  geom_histogram(aes(review_count), fill = "coral3", color = "white", binwidth = 4)+
+  labs(title = "Number of Reviews per User (<=75)")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+### Average Rating Per User
+
+On the histogram of average ratings among all users, the top two scores that most users tend to give is 5 and 1, which intuitively makes sense, because people are more likely to share their comments when they have an extremely satisfying experience, or on the other hand, a horrible experience. Overall, the average rating among all users was 3.681.
+
+```{r}
+# Summary of users' average ratings
+# user[, summary(get(average.stars.name))]
+
+# Plot users' average ratings
+ggplot(user)+
+  geom_histogram(aes(get(average.stars.name)),fill = "coral3", color="white", binwidth = 0.1)+
+  labs(title = "Average Ratings")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+### Number of Years Being An Elite Member
+
+We then continued our EDA by investigating the number of years for each user being an elite member, a measurement for a user's level of activeness. The summary and histogram again presented an imbalanced result, where over 1.5 million users have never been an elite member, but the maximum value is 13 years.
+
+```{r}
+# Summary of Number of Years Being A Elite Member
+# user[, summary(get(num.of.elites.name))]
+
+# Plot Number of Years Being A Elite Member
+ggplot(user)+
+  geom_histogram(aes(get(num.of.elites.name)),fill = "coral3", color="white", binwidth = 0.5)+
+  labs(title = "Number of Years Being A Elite Member")+ 
+  xlim(-0.5,6.5)+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+### Number of Friends Per User
+
+Similarly, for number of friends per user, most users only have one friend, whereas the maximum value is 14995 friends.
+
+```{r}
+# Summary of Number of Friends per User
+# user[, summary(get(num.of.friends.name))]
+
+# Plot users with less than 20 friends
+ggplot(subset(user,get(num.of.friends.name)<=20))+
+  geom_histogram(aes(get(num.of.friends.name)), fill = "coral3", color = "white", binwidth = 1)+
+  labs(title = "Number of Friends per User (<=20)")+
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+### Key Attributes of User
+
+A key message we have received so far is that among all the 1.6 million uses, a few of them are extremely active and influencial, so our final goal for EDA of user dataset is to identify those users. We first selected a few key variables to include in the data.table, which are review_count, useful, fans, num_of_elites and num_of_friends. After that we defined a formula to calculate a final score for each user (equal weights of 20% was assumed in our case, but the formula is subject to change). Finally, we identified influencers to be those who are one standard deviation away from the mean of final score, which accounted for 4% of total population of users.
+
+```{r Identify influencers}
+# Create a new data.table to store key attributes
+user_key_attributes <- cbind(user[, get(user.id.name)], user[, lapply(X = .SD, FUN = scaling_user), .SDcols = user.key.cols.names])
+setnames(x = user_key_attributes, old = "V1", new = "user_id")
+
+# Calculate final score for each user
+user_key_attributes[,eval(final.score.name):=20*get(review.coutn.name)+20*useful+20*fans+20*num_of_elites+20*num_of_friends]
+
+# Define influencers
+user_key_attributes[, eval(influencer.name):=1*(get(final.score.name) > mean(get(final.score.name))+sd(get(final.score.name)))]
+
+# Summary of influencers
+# user_key_attributes[, summary(get(influencer.name))]
+
+datatable(data=user_key_attributes[1:100,lapply(X = .SD, FUN = "round.numerics", digits = 3)], 
+    rownames = FALSE, 
+    extensions = DT.extensions)
+```
+
+
+## Business Data
+
+```{r Splitting Data}
+# Spliting the business into 3 diff datasets : business, attribute, and hour
+attributes = business[, c(2,13:51)]
+hour = business[, c(2,53:59)]
+new.business = business[,c(2:12, 52)]
+# dim(new.business)
+# names(new.business)
+```
+
+Business data originally had 58 variables, including but not limited to: 
+
+* `business_id`: 22 character unique string business id
+* `name`: the business's name
+* `address`: the full address of the business
+* `city`: the city
+* `states`: 2 character state code, if applicable
+* `postal_code`: the postal code
+* `latitude`/`longitude`: latitude / longitude
+* `stars`: star rating
+* `review_count`: number of reviews
+* `is_open`: 0 or 1 for closed or open, respectively
+* the list of `attributes`: business attributes to values. note: some attribute values might be objects
+  + good for kids
+  + reservation
+  + parking
+  + noise level
+  + $\ldots$
+* `hours`: hours are using a 24hr clock
+  + Monday: "10:00-21:00"
+  + Tuesday: "10:00-21:00"
+  + Friday: "10:00-21:00"
+  + Wednesday: "10:00-21:00"
+  + Thursday: "10:00-21:00"
+  + Sunday: "11:00-18:00"
+  + Saturday: "10:00-21:00"
+
+Both attributes and hour variable contains too many missing variables and in peculiar format, for instance, {'dessert': False, 'latenight': False, 'lunch': True, 'dinner': True, 'brunch': False, 'breakfast': False}. It was hard to find a way to fill in those missing values, we therefore decided to move on without these two variables. Yet, we still believe that these two could have an impact on our result. If we had more time, we would definitely work on these variables to incorporate them into our classification.  
+
+```{r Exploring - Category}
+# Tracking top famous categories in Yelp business data
+category.tab = data.table(Category = unlist(strsplit(new.business$categories, ",")))
+
+category.tab = category.tab[, .N, by = Category]
+setnames(x = category.tab, old = "N", new = "Count")
+setorderv(x = category.tab, cols = "Count", order = -1)
+
+datatable(category.tab, extensions = DT.extensions)
+
+# Visualize the Top 10 categories
+top10_category_plot = ggplot(data = category.tab[1:10], aes(x = reorder(Category, Count), y = Count, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(x = Category, y = 1, 
+                label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 3, colour = 'black', fontface = 'bold') +
+  labs(x = 'Category', 
+       y = 'Count', 
+       title = 'Top 10 Category in Yelp') +
+  coord_flip()+
+  theme_bw()
+
+print(top10_category_plot)
+```
+
+### Visualization of All Businesses
+
+```{r, out.width="100%"}
+states <- data.table(map_data("state"))
+business_sum <- business[, .(num = .N, mean_stars = mean(get(stars.name)), long = mean(get(longitude.name)), lat = mean(get(latitude.name))), keyby = state.name]
+restaurant_sum <- restaurant[, .(num = .N, mean_stars = mean(get(stars.name)), long = mean(get(longitude.name)), lat = mean(get(latitude.name))), keyby = state.name]
+two_states_reg <- subset(states, (region=="arizona")|(region=="nevada"))
+two_states_sum <- subset(restaurant_sum, (state=="AZ")|(state=="NV"))
+two_cites <- subset(restaurant, (city=="Phoenix")|(city=="Las Vegas"))
+
+
+# Plot all businesses in the U.S.
+ggplot() + 
+  geom_polygon(data = states, aes(x = long, y = lat, group = group), color = "white", fill = "grey") + 
+  coord_fixed(1.3) + guides(fill=FALSE)  +
+geom_point(data=business_sum, aes(x=long, y=lat, colour=mean_stars, size=num)) +
+  scale_size(name="Number of Businesses") +
+  geom_label_repel(data=business_sum, aes(x=long, y=lat, label=state, fill = factor(state)), size=2 ) +
+  labs(title = "All Businesses in the US and Canada") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Rest of the data was relatively clean: no missing data, no atypical format. From exploring the data, particularly the category variable, we found out that Yelp deals with more than restaurants. They have different types of business, including shopping, insurance, hospital, hotels, bars, party bus, sewing, real estate, restaurants, and other variety of industries. The top categories that Yelp work with are shown in the grpahs.  Coincidentally, among the many categories, restaurants were enlisted the most and we, as foodies, decided to investigate only the restaurants. 
+
+### Visualization of All Restaurants
+
+```{r, out.width="100%"}
+ggplot() + 
+  geom_polygon(data = states, aes(x = long, y = lat, group = group), color = "white", fill = "grey") + 
+  coord_fixed(1.3) + guides(fill=FALSE)  +
+geom_point(data=restaurant_sum, aes(x=long, y=lat, colour=mean_stars, size=num)) +
+  scale_size(name="Number of Restaurants") +
+  geom_label_repel(data=restaurant_sum, aes(x=long, y=lat, label=state, fill = factor(state)), size=2 ) +
+  labs(title = "All Restaurants in the US and Canada") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r Exploring - extracting restaurants from category}
+w = new.business[, grepl(pattern = "Restaurants", x = categories)]
+restaurant = new.business[w, ]
+# From now on we will work on restaurant dataset, instead of new.business
+
+# Find what is the most famous cuisine among the ones I named in restaurant
+cuisine.list = c('Ainu', 'Albanian','Argentina','Andhra', 'Anglo-Indian', 'Arab', 'Armenian', 'Assyrian', 'Awadhi', 'Azerbaijani', 'Balochi', 'Belarusian', 'Bangladeshi', 'Bengali',    'Berber', 'Buddhist', 'Bulgarian', 'Cajun', 'Chechen', 'Chinese',    'Chinese Islamic', 'Circassian', 'Crimean Tatar', 'Cypriot', 'Danish', 'Estonian', 'French', 'Filipino', 'Georgian', 'Goan', 
+'Goan Catholic', 'Greek', 'Gujarati', 'Hyderabad', 'Indian', 'Indian Chinese', 'Singaporean', 'Indonesian', 'Inuit', 'Italian American', 'Italian', 'Japanese', 'Jewish', 'Karnataka', 'Kazakh', 'Keralite', 'Korean', 'Kurdish', 'Laotian','Latvian', 'Lithuanian', 'Louisiana Creole', 'Maharashtrian', 'Mangalorean', 'Malay', 'Chinese', 'Malaysian', 'Indian', 'Mediterranean', 'Mexican', 'Mordovian', 'Mughal','Native American', 'Nepalese', 'New Mexican', 'Odia', 'Parsi', 'Pashtun', 'Polish', 'Pennsylvania Dutch', 'Pakistani', 'Peranakan', 'Persian', 'Peruvian', 'Portuguese', 'Punjabi', 'Rajasthani', 'Romanian', 'Russian', 'Sami', 'Serbian', 'Sindhi', 'Slovak', 'Slovenian', 'Somali', 'South Indian', 'Sri Lankan', 'Taiwanese', 'Tatar', 'Thai', 'Turkish', 'Tamil', 'Udupi', 'Ukrainian', 'Yamal', 'Zanzibari', 'American')
+# reference: https://en.wikipedia.org/wiki/List_of_cuisines
+
+# Adding Cuisine.info into the restaurant table.
+categories.list <- strsplit(restaurant$categories, ", ")
+cuisine.info <- c()
+for (i in 1:nrow(restaurant)){
+  if (any(categories.list[[i]]%in% cuisine.list) == FALSE){
+    cuision = "others"
+  } else{
+    cuision <- categories.list[[i]][which(categories.list[[i]] %in% cuisine.list)]
+    if(length(cuision)>1){
+      cuision <- cuision[1]
+    }
+  }
+  cuisine.info <- append(cuisine.info, cuision)
+}
+
+restaurant.w.cuisine = cbind(restaurant,cuisine.info)
+
+restaurant.w.cuisine[cuisine.info %in% c('American (New)', 'Breakfast & Brunch', 'Burgers', 'Fast Food','American (Traditional)', 'Breakfast & Brunch', 'Burgers', 'Barbeque', 'Steakhouses', 'Sandwiches', 'Pizza', 'Hot Dogs'),cuisine.info:="American"]
+restaurant.w.cuisine[cuisine.info %in% c('Soul Food'),cuisine.info:="Korean"]
+restaurant.w.cuisine[cuisine.info %in% c('Sushi Bars'),cuisine.info:="Japanese"]
+
+cuisine.tab <- restaurant.w.cuisine[,.N, by = cuisine.info]
+setnames(cuisine.tab, old = 'cuisine.info', new = "Cuisine")
+setnames(cuisine.tab, old = 'N', new = "Count")
+setorderv(x = cuisine.tab, cols = 'Count', order = -1)
+
+# Visualize the Top 10 cuisine
+top10_cuisine_plot = ggplot(data = cuisine.tab[2:11], aes(x = reorder(Cuisine, Count), y = Count, fill = Cuisine)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(x = Cuisine, y = 1, 
+                label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=-0.5, vjust=.5, size = 3, colour = 'black', fontface = 'bold') +
+  labs(x = 'Cuisine', 
+       y = 'Count', 
+       title = 'Top 10 Cuisine in Yelp') +
+  coord_flip()+
+  theme_bw()
+
+print(top10_cuisine_plot)
+```
+
+When we select a restaurant, the first thing that we do is choose cuisine: Chinese, American, Mexican, Japanese, Korean, and such. Hence, we narrow down the restaurants by cuisines once again. Majority of them were not categorized as we planned. Still, it gave us a good idea which cuisine is the most popular in the United States. Mexican restaurants account for the most in the dataset. This makes sense because the majority of the immigrants in the states are from South America, and they are relatively cheap considering its quality. We presume that if we have the Yelp dataset from another country, then it would be different, i.e., Korean or Japanese restaurants would be the most popular ones in China. Besides, we bump into many Mexican restaurants whether that is food truck or actual restaurants in our daily lives.  
+ 
+```{r}
+# business by state
+state.tab = restaurant.w.cuisine[, .(Count = .N), by = state]
+setorderv(state.tab, cols = 'Count', order = -1)
+
+state_plot = ggplot(data = state.tab[1:10],aes(x = reorder(state, Count),y = Count, fill = state)) +
+  geom_bar(stat='identity',colour="white") +
+  geom_text(aes(x = state, y = 1, label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 4, colour = 'black', fontface = 'bold') +
+  labs(x = 'State', 
+       y = 'Count', 
+       title = 'Top 10 States in Yelp') +
+  coord_flip() + 
+  theme_bw()
+
+# business by city
+city.tab = restaurant.w.cuisine[, .(Count = .N), by = city]
+setorderv(city.tab, cols = "Count", order = -1)
+
+city_plot = ggplot(data = city.tab[1:10],aes(x = reorder(city, Count),y = Count, fill = city)) +
+  geom_bar(stat='identity',colour="white") +
+  geom_text(aes(x = city, y = 1, label = paste0("(",round(Count/1e3)," K )",sep="")), hjust=0, vjust=.5, size = 4, colour = 'black', fontface = 'bold') +
+  labs(x = 'City', 
+       y = 'Count', 
+       title = 'Top 10 Cities in Yelp') +
+  coord_flip() + 
+  theme_bw()
+
+grid.arrange(state_plot, city_plot)
+```
+
+We expanded our exploration on the business data to states and city to have a better understanding of the data. The reason behind this is we wanted to craft a story for at least one or two restaurants as Professor recommended us. Interestingly, we discovered that Ontario, a state in Canada, has the most number of restaurants, followed by Arizona and Nevada. Originally, we wanted to compare the surviving rate between the restaurants in Ontario and that in Arizona; however, when we first convert the data we only took the first 100 thousand data from review. And, we could not find a sufficient number of restaurant review data from the review data. So, we agreed to go with the two most popular states, Arizona and Nevada. In terms of the city, we see that Toronto has the most number of restaurants listed and Las Vegas and Pheonix account for the second and third most. From here, one could claim that restaurants data are not condensed in Pheonix but allocated in many different cities in Pheonix, while most of the restaurant's data from Nevada are from Las Vegas.  
+
+```{r Cities in Arizona}
+AZ_cities_numb = restaurant.w.cuisine[get(state.name) == "AZ", length(unique(get(city.name)))]
+# print(AZ_cities_numb) # 57
+
+NV_cities_numb = restaurant.w.cuisine[get(state.name) == "NV", length(unique(get(city.name)))]
+# print(NV_cities_numb) # 23
+
+AZ_NV_restaurant_numb = restaurant.w.cuisine[get(state.name) == "AZ" | get(state.name) == "NV", .N]
+# print(AZ_NV_restaurant_numb) # 19248
+
+# Narrowing down the scope}
+# full.restaurant.w.cuisine2 [get(state.name) == "AZ",(count=.N),by=is_open]
+# full.restaurant.w.cuisine2 [get(state.name) == "AZ",(count=.N),by=is_open]
+```
+
+To confirmed this assertion, we took a look at the number of cities listed in the dataset for both AZ and NV. And, the number of cities listed under AZ, `r AZ_cities_numb`, is greater than that under NV,`r NV_cities_numb`. As we mentioned briefly, our goal was to narrow down our data analysis for either one or two restaurants and craft story out of it, we decided to move along with only AZ and NV.  
+
+```{r Exploring Is_open}
+# Overall surviving rate 
+overall.surviving.rate = restaurant.w.cuisine[, .N, by = is.open.name]
+overall.surviving.rate = overall.surviving.rate[1,2] / nrow(restaurant) 
+
+# Simply take a look at the number of restaurants are open and close
+vegas.open.tab = restaurant.w.cuisine[get(city.name) == "Las Vegas", .N , by = is.open.name]
+phoenix.open.tab = restaurant.w.cuisine[get(city.name) == "Phoenix", .N , by = is.open.name]
+
+# Calcualting survival rates for both
+vegas.open.tab[, Total := sum(N)]
+vegas.open.tab[, Rate := (N/Total)*100]
+setorderv(vegas.open.tab, cols = 'is_open', order = -1)
+vegas.surviving.rate = vegas.open.tab[1,4]
+
+phoenix.open.tab[, Total := sum(N)]
+phoenix.open.tab[, Rate := (N/Total)*100]
+phoenix.surviving.rate = phoenix.open.tab[1,4]
+
+# vegas.surviving.rate > phoenix.surviving.rate
+# vegas.open.tab[1,4] > phoenix.open.tab[1,4] 
+```
+
+To calculate the sustainability of restaurants, we consider `Is_open` variable as our outcome of regression. First, we calculated the overall surviving rates of the entire restaurant, and compare with that of AZ and NV. Overall surviving rate is `r overall.surviving.rate` when that of Vegas is `r vegas.surviving.rate` and that of Pheonix is `r phoenix.surviving.rate`.  
+
+In genearl, Vegas has more restaurants, including both still in business and not in business anymore. Yet, the surviving rate in Vegas is lower than Phoenix. In other words, restaurant business is more competitive in Vegas than in Phoenix.
+
+```{r Competitiveness by cuisine}
+vegas.surviving = restaurant.w.cuisine[get(city.name) == "Las Vegas", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(vegas.surviving,"# of restaurants",-1)
+# datatable(vegas.surviving, caption = "Las Vegas Surviving Rate")
+
+phoenix.surviving = restaurant.w.cuisine[get(city.name) == "Phoenix", .("# of restaurants" = .N, surviving.rate = mean(is_open,na.rm = TRUE)), by = cuisine.info ]
+setorderv(phoenix.surviving,"# of restaurants",-1)
+# datatable(phoenix.surviving, caption = "Phoenix Surviving Rate")
+
+# Combine Two 
+survival_rate_tab <- rbind(vegas.surviving %>% mutate(Area = "Las Vegas"), 
+                           phoenix.surviving %>% mutate(Area = "Phoenix")) %>%
+  as.data.table
+# setnames(survival_rate_tab,colnames(survival_rate_tab), 
+#          c('Cuisine Info', 'Num of Restaurants', 'Surviving Rate', 'Area'))
+datatable(survival_rate_tab,
+          colnames = c('Cuisine Info', 'Num of Restaurants', 'Surviving Rate', 'Area'),
+          caption = "Surving Rate",
+          extensions = DT.extensions)
+
+# knitr::kable(survival_rate_tab, caption = "Surving Rate") %>%
+#   kableExtra::kable_styling("striped", full_width = T) %>%
+#   kableExtra::pack_rows("Las Vegas", 1, nrow(vegas.surviving)) %>%
+#   kableExtra::pack_rows("Phoenix",nrow(vegas.surviving)+1 , nrow(survival_rate_tab))
+```
+
+We did a similar analysis by cuisine. Except for Mexican restaurants, all other cuisines have lower surviving rate than overall surviving rates. With same reason that it is dataset from US, we could understand the situation. 
+
+```{r Star distribution by is_open}
+star.dist.by.open = restaurant.w.cuisine[, .N, by = c(is.open.name, 'stars')]
+
+star.dist.by.open_plot = 
+  ggplot(star.dist.by.open, aes(x = stars, y = N, fill = factor(is_open))) +
+  geom_bar(stat = 'identity',position = 'dodge') +
+  scale_color_brewer(palette = "Spectral") +
+  xlab("Stars") +
+  ylab("Count") +
+  ggtitle("Star Distribution Between Open and Close") +
+  theme(plot.title = element_text(size=9.5))
+
+print(star.dist.by.open_plot)
+```
+
+Lastly, we did compare the star rates between ones are still open and closed. As one can see there is not much of difference between the two except for the number of rates. 
+
+
+
+
+# Pre-processing
+## Text Mining
+
+Reviews for any store are valuable, especially for restaurant who need to serve thousands of customers everyday. For yelp user, star rates may be the straightforward way to judge whether a restaurant is good or bad, however, they won’t get any information by just staring at the star, especially when one restaurant only have few star rate. The reason is because star rating for one restaurant tend to lose a lot of information that provided by user, in other words, it is hard to get any specific useful information by only referencing the star that customer rate on that restaurant. Therefore, in the following section, we will look at how review in yelp can help the business by applying text mining technique with sentiment analysis. Text mining, or text analytics, is a useful tool to deriving information from text, and sentiment analysis is one of the most popular application of text mining that widely applied to customer reviews just like reviews from yelp. To uncover opinion from customers' reviews, we did feature engineering by constructing new feature “sentiment score” to help us indicating the sentiment from customers' review for each business, which also plays main role as a preditor in fitting prediction model latter on.
+
+```{r preparing data}
+#full_review<-readRDS("~/Desktop/Apply DS/Final Project/Data/full_review.rds")
+
+##Prepare "data_clean": only get reviews for restaurant in "restaurant.w.cuisine" (narrow down)
+#cuisine.review<-merge(restaurant.w.cuisine,full_review,by="business_id")
+#colnames(cuisine.review)[9]<-"business.star.rate"
+#colnames(cuisine.review)[16]<-"Customer.review.rate"
+#length(unique(cuisine.review$business_id))  ## 59371 unique business
+#length(unique(cuisine.review$review_id))   ## 4201684 unique post for all 59371
+
+
+## clean up full review from above
+#target_tidy<-tibble(text=cuisine.review$text,business_id=factor(cuisine.review$business_id),post.id=factor(cuisine.review$review_id))
+#data_clean<-target_tidy %>% unnest_tokens(word,text) %>% group_by(word) %>% anti_join(stop_words)
+#write.csv(data_clean,"data_clean.csv")
+
+
+##Get data_clean (full review and clean up by stop word)
+
+#Load data 
+data_clean<-readRDS("../Data/data_clean.rds", refhook = FALSE)
+#data_clean<-data_clean[,2:4]
+#data_clean<-data_clean[2:nrow(data_clean),]
+#colnames(data_clean)<-c("business_id","review_id","word")
+```
+
+## Sentiment Analysis
+
+For this project, we mainly focus on unigram-base sentimental analysis, in other word, we need to convert text data into tidy format, and break down the text into one single word per each review for each business. To ensure a high-quality of result for latter on sentimental analysis, we cleaned up our data by removing redundant words such as numbers, stop words, punctuations, whitespace, etc. Since we are unigrams-base, we choose to use two different sentiment lexicons “AFINN” and “bing” for detecting the emotion of each word. The “AFINN” lexicon assigns a score for words that range from -5 (negative) to 5 (positive). The “bing” lexicon categorizes words into either “Positive” or “Negative” groups. Then we can build our new feature called “sentiment” score by using different method. Here we use some easy straightforward ways in calculation. For “AFINN”, we can simply sum up score for each review since there may be some positive word and negative word as well in one review. For “bing”, we calculated the number of positive and negative words for each review so that we can obtain the ratio of positive word for each review. There is many other mathematical way to obtain a representative sentimental score for each review, but here we just tried on the most intuitive way.
+
+Since data is relatively large, we write a seperate file for all restaurant with review and summary statistics of sentiment score.
+
+```{r direct load}
+## Load full.restaurant.w.cuisine 
+#full.restaurant.w.cuisine<-readRDS("~/Desktop/Apply DS/Final Project/full.restaurant.w.cuisine.rds")
+#saveRDS(full.restaurant.w.cuisine,"full.restaurant.w.cuisine.rds")
+
+#full.restaurant.w.cuisine2<-readRDS("~/Desktop/Apply DS/Final Project/Data/full.restaurant.w.cuisine2.rds")
+
+```
+
+```{r data preparation, eval=T}
+
+## Following is procedure to get "full.restaurant.w.cuisine": dataset with "AFINN" total sentiment score
+
+#First use "AFINN" lexicon to detect the sentiment and assign score
+data_clean_sentiment<-data_clean %>%inner_join((get_sentiments("afinn")))
+data_clean_sentiment<-data.table(data_clean_sentiment)
+colnames(data_clean_sentiment)[1]<-"business_id"
+#Sum up sentiment score for each review for each restaurant
+aa<-data_clean_sentiment[,.(total.score.each.post=sum(score)),by=c("business_id","review_id")]
+##group by business and sum up all post score
+step3<-aa[,.(total.sentiment.score=sum(total.score.each.post),total.num.post=.N),by="business_id"]
+#Merge all sentiment score to "restaurant.w.cuisine"
+full.restaurant.w.cuisine<-merge(restaurant.w.cuisine,step3,by="business_id")
+# datatable(head(data.table(full.restaurant.w.cuisine)))
+
+
+## Following is procedure to get "full.restaurant.w.cuisine2": combine result above with "bing" sentiment score
+
+#Use "bing" to detect the sentiment word and calculate number of positive words and negative words for each restaurant from all reviews
+bing_df<-data_clean %>%inner_join((get_sentiments("bing")))
+bing_df<-data.table(bing_df)
+bb<-bing_df[,.(count=.N),by=c("business_id","sentiment")] 
+  
+#calculate ratio of positive word 
+bin_way2<-bb%>% spread(sentiment,count,fill=0) %>%
+          mutate(positive.sentiment.ratio=round((positive/(positive+negative))*100,2))%>%
+          arrange(desc(positive))
+
+# Merge with "Afinn" result in "full.restaurant.w.cuisine" 
+full.restaurant.w.cuisine2<-merge(full.restaurant.w.cuisine,bin_way2,by="business_id")
+#saveRDS(full.restaurant.w.cuisine2,"full.restaurant.w.cuisine2.rds")
+```
+
+```{r dsiaplay}
+# full.restaurant.w.cuisine2 <- readRDS("../Data/full.restaurant.w.cuisine2.rds")
+datatable(data.table(full.restaurant.w.cuisine2), 
+          extensions = DT.extensions)
+```
+
+
+After detecting the sentiment by using both lexicon, we can now start our analysis by visualization. 
+
+### Top 10 Restaurant Information Table
+
+Here is the data table with top 10 restaurant that have highest total sentiment score. "total sentiment score" are calculated by summing up "AFINN" score for each review, and "total.num.post" are number of review that we get the score from. "negative" and "positive" represent the number of negative word and positive from all review by using "bing" lexcion, and "positive.sentiment.ratio" represent the percentage that positive word.
+
+```{r Top10 business}
+top10_afin_result<-full.restaurant.w.cuisine2%>% arrange(desc(total.sentiment.score)) %>% head(10)
+datatable(top10_afin_result[c(1:2,4,5,9,11:18)], 
+              extensions = DT.extensions, 
+              options = list(pageLength=10))
+```
+
+From the above table, top 1 "Mon Ami Gabi" and top 2 "Bacchanal Buffet" got the most number of review, and they maintain their position due to relatively high ratio of positive word, even though they still get certain amount of bad review. Most of them have star rate around 4, which is still considered as a good rate because of relatively large amount of review. This is also the case the explain why star rate is not a good reference for neither yelp user or business owner since some restaurants may have 5 star just because it has very few review with 5 star rate, but it doesn't means it provides the best services. Moreover, we found something interesting that all of them are in Las Vegas. The reason that they have such high amount of review may be because they are in a good location, where is in a great city that famous for its casino and tourism in the world. People are there for their vacation and would like search and try out good restaurant around while they are more likely to post their review for their experience as well.
+
+
+### Top 10 Restaurant with highest Sentiment Score Plot
+
+We may find that in our feature "cuisine", 6 out of 10 are label as others. The reason is because it is hard to tell what type of cuisine it belongs to by referencing from their "categories", and "categories" feature is more like a list of services that this business will provides. To refine a little bit to see the type of all top 10 restaurants, we rebuilt a label for plot so that we can get more insight from these top 10 restaurant.
+
+```{r}
+# cleaning before creating label
+tab2<-tibble(categories=top10_afin_result$categories,business_id=factor(top10_afin_result$business_id)) %>%unnest_tokens(word,categories,token='regex',pattern=",") 
+tab2$word<-str_trim(tab2$word)  
+
+
+# Create new categories label
+tab3<-tab2 %>% filter(!word %in% c("arts & entertainment","event planning & services","day spas","hotels & travel","resorts","restaurants","food delivery services","casinos","food","caterers","beauty & spas")) 
+cat_label<-tab3[-which(duplicated(tab3$business_id)),]
+top_10_score2<-merge(top10_afin_result,cat_label,by="business_id")
+colnames(top_10_score2)[19]<-"new.categories.label"
+
+
+# Plot
+top_10_score2 %>% mutate(name=fct_reorder(name,total.sentiment.score)) %>%ggplot(aes(y=total.sentiment.score,x=name,fill=factor(new.categories.label)))+
+  geom_bar(stat = "identity") +
+  ggtitle("Top 10 business(restaurant or with restaurant) with highest sentiment score") +
+  xlab("Name")+
+  ylab("Total Sentiment Score")+
+  labs(fill="Cagtegories")+
+  coord_flip()+
+  theme(plot.title = element_text(size=10,face = "bold"))
+
+```
+
+From the plot, we sorted data by total sentiment score, and it is easy to observe that most of restaurant are American style such as, trainditional and new American style, fast food(burgers, bufflo wings), buffets and steak. There are two restaurants provide "buffets", which consists with the fact that it is one of the most popular style of restaurant in Las Vegas as well. The "The Cosmopolitan of Las Vegas" is a Casino as well as hotel, and they also have restaurant inside the hotel, which is the top 3 with a high sentiment score without specify their cuisine. 
+
+
+## Word Cloud
+
+To get more insight of what specify information that we can obtain from each restaurant’s reviews, we narrowed down our analysis here to the top 1 restaurant "Mon Ami Gabi” so that we could have a brief idea why this restaurant ace the top 1 with such high sentiment score and large amount of review. Here we chose to use word cloud to enhance visualization of the most popular positive words and negative words from all reviews. 
+
+```{r}
+#create specific df for word clound
+wc_df<-bing_df[business_id=="4JNXUYY8wbaaDmk3BPzlWw"] %>% 
+  group_by(word,sentiment) %>% 
+  summarise(count=n()) %>% 
+  spread(sentiment,count,fill=0)
+
+# Positive wordcloud
+wc_df%>%with(wordcloud(word,positive,max.words=100,col=rainbow(10),main="Positive Words Wordcloud"))
+
+#Negative wordcloun
+wc_df%>%with(wordcloud(word,negative,max.words=100,col=rainbow(10),main="Negative Words Wordcloud"))
+
+# Both Positive and Negative comparison wordcloud
+bing_df[business_id=="4JNXUYY8wbaaDmk3BPzlWw"] %>%
+  count(word,sentiment,sort=T) %>% 
+  acast(word~sentiment,value.var="n",fill=0) %>%
+  comparison.cloud(color=c("grey80","grey30"),title.size=3,max.words=100)
+```
+
+Standing from business side, the business owner could get very useful information here especially from the negative word cloud, which provides them a brief direction or recommendation for future improvement. From the above negative word cloud, there are few keywords being highlight and enlarged such as, “wrong”, “pricey”, “dark”, “cold”, “crowded”, etc. It provides keyword or key information from reviews that suggesting this restaurant is considered expensive, and the environment in general is dark, cold and somehow crowded by many of customers who have been to there. In this case, after “Mon Ami Gabi” have this information, they could consider making improvement on their environment or make some promotion to reduce the concern about the price from customers. On the other hand, positive word cloud shows the most frequent positive words in all reviews, which serves the purpose of advertising for free to attract more customers. Therefore, if we can make use of such key information from yelps’ reviews, it may help restaurant or other business to sustain longer and stay competitive among all surrounding restaurant.
+
+There is an interesting fact that yelp indeed provides a function in searching “recommended reviews” by keyword, and here is a picture we screen shot of yelp’s app. Basically we can directly get the most related reviews by the matching keyword, which is a very helpful function that let user directly read the review that they most interested in or care about before making decision. The "recommended reviews" is also a strategy or advertisements that provides for restaurant by making use of free reviews from customers, who posted their review without giving any fees.
+
+
+## Sentiment Trend Across Time
+
+Since we also have date of each review that yelp user post, we can also make use of this information to see how the sentiment score change over time for any specific restaurant. We will still use the top1 restaurant as an example to see whether we can observe any trend of its sentiment score. The sentiment score here are calculated by taking the difference of number of positive words and negative words (Positive –Negative), which is an estimate of the net sentiment in each days of reviews. 
+
+```{r}
+#new.bing_df2<-readRDS("~/Desktop/Apply DS/Final Project/Data/new.bing_df2.rds")
+
+# Select data of "Mon Ami Gabi" from 2017 to 2018 to discover sentiment score trend
+
+df1<-new.bing_df2[name %in% "Mon Ami Gabi" & year %in% c(2017:2018) & month %in% c(1:12)] 
+df1$date<-format(as.POSIXct(df1$date,format='%Y-%m-%d %H:%M:%S'),format='%Y/%m/%d')
+df2<-df1%>%group_by(date)%>%count(sentiment)%>% spread(sentiment, n, fill = 0)
+df2<-data.frame(df2)
+df2$sentiment<-df2$positive-df2$negative
+df2$year<-format(as.Date(df2$date),format="%Y")
+ggplot(df2,aes(factor(date),sentiment,fill=factor(year))) +
+  geom_col(show.legend = F)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  xlab("Date")+ 
+  scale_x_discrete(breaks=df2$date[c(T,rep(F,15))])+
+  facet_wrap(~year,ncol = 1,scales="free_x")
+    
+
+# Compare plot with restaurant "Giada" (Top 10th)
+    
+df11<-new.bing_df2[name %in% "Giada" & year %in% c(2017:2018) & month %in% c(1:12)] 
+df11$date<-format(as.POSIXct(df11$date,format='%Y-%m-%d %H:%M:%S'),format='%Y/%m/%d')
+df22<-df11%>%group_by(date)%>%count(sentiment)%>% spread(sentiment, n, fill = 0)
+df22<-data.frame(df22)
+df22$sentiment<-df22$positive-df22$negative
+df22$year<-format(as.Date(df22$date),format="%Y")
+ggplot(df22,aes(factor(date),sentiment,fill=factor(year))) +
+  geom_col(show.legend = F)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  xlab("Date")+ 
+  scale_x_discrete(breaks=df22$date[c(T,rep(F,15))])+
+  facet_wrap(~year,ncol = 1,scales="free_x")
+```
+
+First plot shows net sentiment score change of top 1 restaurant "Mon Ami Gabi" during years 2017 to 2018. We can find out that most of scores are positive with higher than 10, and only few of the bar are negative score. Comparing with top 1, the second plot of top 10th restaurant “Giada” in general have less bar with high score and there are more negative scores in the plot. Besides, there are a little bit more score with higher than 20 in 2017 than in 2018. From the comparison, it tells us that "Mon Ami Gabi" did very good in general in maintaining their best services that achieved great amount of positive reviews for last two years, and this is the reason that how they gain popularity and attract more yelp users’ attention to try it out. We also can narrow down to specify month with each review sentiment change post by post like this, which provides more detail trend of sentiment score within a month or days. Again, standing from business side, after certain promotion or improvement have been made in their restaurant for a while, owner may want to know whether their new strategy or improvement work for gaining more customers’ favor or not. In this case, we may observe certain pattern from this time series plot to see whether the scores are generally increase or stay the same for specify period.
+
+```{r Summary table for the two states : AZ and NV}
+# Get summary table of sentiment analysis for two states
+summary.stat<-full.restaurant.w.cuisine2 %>% filter (state%in%c("AZ","NV")) %>%group_by(state,is_open) %>% summarise(count=n(),mean.total.sentiment.score=mean(total.sentiment.score),mean.num.post=mean(total.num.post),mean.negative=mean(negative),mean.positive=mean(positive),mean.positive.ratio=mean(positive.sentiment.ratio),mean.star=mean(stars)) %>% data.table()
+
+datatable(summary.stat[,lapply(X=.SD,FUN="round.numerics",digits=1)], 
+              extensions = DT.extensions, 
+              options = list(pageLength=4))
+```
+
+To observe any relation between the restaurant sustainability and our result from sentiment analysis, we did a summary table of the results from our sentiment analysis for two states we mainly focus on. By comparing between opening restaurants (is_open=1) or closed restaurants(is_open=0), it is easy to find that opening restaurants in both states, on average, have higher sentiment score while they also receive more number of reviews. Among these reviews, the average of number of positive words are tend to be higher than closed restaurants as well. Yet, the difference is not that significant. 
+
+# Models
+
+The results of the sentimental of the two states do not seem to differ from each other regarding to restaurants' opening status. Furthermore, the average star rates of opned and closed restaurants are also close to each other. We conclude that whether the reviews are positive or negative does not seem to have a great impact on restaurants' sustainability. Therefore, to deepen our investigation, we then focused on determining if sentiment score as a variable along with other selected features can be used to predict opening status. To test this hypothesis, we run regressions with key features: stars, review_count, cuisine.info, and total.sentiment.score. Here, we did not incorporate the variables from users, particularly influencer, because we did not have time to aggregate them and run models. 
+
+
+## Features Selected
+
+Following variables are utalized in the models. Due the restriction of K-Nearest-Neighbour package in R, we regrouped the cuisine.info such that it can have fewer levels. 
+
+* `is_open`: The response variable, stating where the restaurant is open or not. No or Yes for closed or open, respectively. 
+* `stars`: Average number of stars a certain restaurant receives, rounded to half-stars.  
+* `review_count`: Number of reviews a certain restaurant receives. 
+* `cuisine.info`: The cuisine type of a certain restaurant. 
+* `total.sentiment.score`: The total sentiment score calculated above regarding a certain restaurant. 
+
+```{r data processing, eval=FALSE}
+set.seed(621)
+##################################################################################
+# read in saved data
+##################################################################################
+DT <- readRDS("../Data/full.restaurant.w.cuisine.rds", refhook = NULL)
+# all(str_detect(DT$categories, "American") == grepl("American", DT$categories))
+
+##################################################################################
+# Fill in NA
+##################################################################################
+fill_in_NA(cuisine_american); fill_in_NA(cuisine_bars)
+fill_in_NA(cuisine_cafe); fill_in_NA(cuisine_asian)
+fill_in_NA(cuisine_Vietnamese); fill_in_NA(cuisine_vege)
+combine_regions(cuisine_south_asia); combine_regions(cuisine_se_asia)
+combine_regions(cuisine_europe)
+DT[get(cuisine.name)=="Taiwanese", eval(cuisine.name) := "Chinese"]
+DT[get(cuisine.name)=="Armenian", eval(cuisine.name) := "Others"]
+DT[is.na(get(cuisine.name))==TRUE, eval(cuisine.name) := "Others"]
+
+##################################################################################
+# Sample N Observations and Create Dummies
+##################################################################################
+## For every unique value in the string column, create a new 1/0 column
+
+DT %>% select(is_open, stars, review_count, cuisine.info, total.sentiment.score, total.num.post) %>%
+  sample_n(., N) %>%
+  mutate(is_open = ifelse(is_open==1, "Yes", "No")) %>%
+  # mutate_if(is.character, as.factor)
+  mutate(is_open = as.factor(is_open)) %>%
+  mutate(cuisine.info = ifelse(cuisine.info=="Sri Lankan", "Sri_Lankan", cuisine.info))%>%
+  mutate(total_sentiment_score=total.sentiment.score,
+         total_num_post=total.num.post, 
+         cuisine_info = as.factor(cuisine.info)) %>% 
+  select(-c(cuisine.info, total.sentiment.score, total.num.post)) -> dat
+
+DT %>% select(is_open, stars, review_count, cuisine.info, total.sentiment.score, total.num.post) %>%
+  sample_n(., N) %>%
+  mutate(is_open = ifelse(is_open==1, "Yes", "No")) %>%
+  mutate(is_open = as.factor(is_open)) %>%
+  mutate(cuisine.info = ifelse(cuisine.info=="Sri Lankan", "Sri_Lankan", cuisine.info))%>%
+  mutate(total_sentiment_score=total.sentiment.score) %>%
+  mutate(total_num_post=total.num.post) -> dat.dummies
+
+for(level in unique(dat.dummies$cuisine.info)){
+  dat.dummies[paste("dummy", level, sep = "_")] <- ifelse(dat.dummies$cuisine.info == level, 1, 0)
+}
+dat.dummies %>% select(-c(cuisine.info, total.sentiment.score, total.num.post)) -> dat.dummies
+```
+
+```{r load data}
+load(file = "../Data/model_dat.rda")
+load(file = "../Data/model_dat.dummies.rda")
+load(file = "../Data/model_trn.rda")
+load(file = "../Data/model_test.rda")
+load(file = "../Data/model_trn.dummies.rda")
+load(file = "../Data/model_test.dummies.rda")
+```
+
+```{r data split}
+set.seed(621)
+# is.factor(dat$is_open)
+
+samp <- sample(1:nrow(dat), 0.8*nrow(dat))
+trn <- dat[samp,]; test <- dat[-samp,]
+trn.dummies <- dat.dummies[samp,]; test.dummies <- dat.dummies[-samp,]
+```
+
+```{r 10 folds}
+set.seed(621)
+nfold <- 10
+folds = seq.int(nrow(trn)) %>%       
+    cut(breaks = nfold, labels=FALSE) %>%   
+    sample()                                  
+```
+
+```{r matrix}
+## error matrix
+record <- matrix(NA, nrow = length(ls.models), ncol = 2)
+colnames(record) <- c("Train Error", "Test Error")
+rownames(record) <- ls.models
+
+## auc matrix
+auc <- matrix(NA, nrow = 1, ncol = length(ls.models))
+colnames(auc) <- ls.models
+rownames(auc) <-  c("auc")
+```
+
+```{r formula}
+names <- names(dat)
+formula.fit <- as.formula(create.formula(outcome.name = names[1], 
+                                         input.names = names[2:length(names)]))
+```
+
+```{r features}
+datatable(dat, extensions = DT.extensions)
+```
+
+## Classification Tree
+
+We used non-parametric method decision trees for modeling. It was convenient and could deal with categorical variables directly. A decision tree was a flowchart-like structure in which each internal node represents a "test" on an attribute. The paths from the root to leaf represented classification rules. In decision analysis, a decision tree and the closely related influence diagram were used as a visual and analytic decision support tool, where the expected values (or expected utility) of competing alternatives were calculated.
+
+In a classification tree, each node denotes a test, and each branch represents an outcome of that test.  In general, we apply a CT to data when our response variable is qualitative or quantitative discrete. CT classify observations based on all available all explanatory variables and is supervised by the response variable. CT is able to classify observations using simple rules regardless of non-linearity and interactivity of explanatory variables.
+
+However, one drawback of the classification tree is that it is largely dependent on the data and thus making the tree over-fit the data. In other words, a tree will have low bias but very high variance. One small change in observed data might completely change the tree. Therefore, it is hard to generalize a single tree for other circumstances. To avoid the problem, we would cross-validated the data so as to prune it. 
+
+In this project, we use the tree to determine if the label can be correctly identified. We first use the corresponding training dataset to tune the trained the tree and found out that the best cp. Then we continue to train the tree model using the same parameter and recorded their points and error rates. Furthermore, to test if the single tree tends to over-fit the data, we cross-validated over the same set of training sets and calculated the mean error rate derived from each fit. Based on the table shown below, we can see that the mean error does not vary much from the error rate of the original tree model. Therefore, we can say that the overfitting of a single tree is not the factor influencing the error rate for this model.
+
+```{r tree model}
+model.tree <- function(trn, tst = test, formula = formula.fit, dependent = is.open.name){
+  
+  features <- setdiff(names(trn), dependent)
+  YTrain <- trn[, dependent]; XTrain <- trn[, features]
+  YTest <- tst[, dependent]; XTest <- tst[, features]
+  
+  control <- trainControl(method = "cv", number = 10)
+  tunegrid <- expand.grid(.cp = seq(0.01, 0.5, 0.01))
+  garbage <- capture.output(tune.ct <- train(formula, data = trn, method = "rpart", trControl = control, tuneGrid = tunegrid))
+  
+  rpart.model <- rpart(formula, data=trn, method="class", control = rpart.control(cp = tune.ct$bestTune$cp))
+  
+  pred.tree.trn <- predict(rpart.model, trn, type="class")
+  tree.trn.err <- erate(pred.tree.trn, YTrain)
+  pred.tree.val <- predict(rpart.model, tst, type="class")
+  tree.val.err <- erate(pred.tree.val, YTest)
+  
+  prob.tree <- predict(rpart.model, XTest)[,2]
+  pred.tree <- prediction(prob.tree, YTest)
+  perf.tree <- performance(pred.tree, measure = "tpr", x.measure = "fpr")
+  auc.tree <- as.numeric(performance(pred.tree, "auc")@y.values)
+
+  return(list(c(tree.trn.err, tree.val.err), auc.tree, perf.tree))
+}
+```
+
+```{r tree run}
+result.tree <- model.tree(trn = trn)
+fill_results(result.tree, "Classification Tree")
+```
+
+
+## Random Forest  
+
+In short, the random forest is conducted by constructing a multitude of decision trees using different parts of the same training set and averaging trees to output the mode of the classes (classification) or mean prediction (regression) of the individual trees (Yeh & Lien). As compare to decision trees, random forest avoid the problem of overfitting the training set, but in exchange, there will be some increase in its bias. 
+
+Furthermore, it might not be as interpretable as the decision tree is. But overall its model should have a better performance in predicting and classifying than decision or classification trees. Overall, we can see that the random forest did perform better regarding its misclassification rate.
+
+Random forest is the ensemble of decision trees which is fast to train but inefficient to predict. And it is a corollary that the more accuracy we would like to achieve, more trees are needed, which means the model is more time-consuming. In most practical situations this approach is fast enough, but there can certainly be situations where run-time performance is important and therefore other approaches would be preferred.
+
+```{r random forest, fig.cap="Random Forest Error", fig.height=2.6, fig.width=3.7}
+model.rf <- function(trn, tst = test, numTrees = 200, formula = formula.fit, dependent = is.open.name){
+  
+  features <- setdiff(names(trn), dependent)
+  YTrain <- trn[, dependent]; XTrain <- trn[, features]
+  YTest <- tst[, dependent]; XTest <- tst[, features]
+  
+  mod.rf <- randomForest(formula = formula, 
+                         data = trn, 
+                         ntree = numTrees, 
+                         importance = TRUE
+                         )
+  
+  pred.tf.trn <- predict(mod.rf, trn, type="class")
+  rf.trn.err <- erate(pred.tf.trn, YTrain)
+  pred.rf.val <- predict(mod.rf, test, type="class")
+  rf.val.err <- erate(pred.rf.val,YTest)
+  
+  prob.rf <- predict(mod.rf, XTest, type="prob")[,2]
+  pred.rf <- prediction(prob.rf, YTest)
+  perf.rf <- performance(pred.rf, measure = "tpr", x.measure = "fpr")
+  auc.rf <-  as.numeric(performance(pred.rf, "auc")@y.values)
+  
+  return(list(c(rf.trn.err, rf.val.err), auc.rf, perf.rf))
+}
+```
+
+```{r rf run}
+result.rf <- model.rf(trn = trn)
+fill_results(result.rf, "Random Forest")
+# record; auc
+```
+
+
+
+## Logistic Regression
+
+Logistic regression is usually considered as a special case of linear regression models. Nevertheless, the binary response variable does not hold a normal distribution as required by other linear regression models. A logistic regression model assumes that the probability of the event, which in our case is the probability of default, is a linear combination of explanatory variables. The advantage of this approach is that the probability of classification can be easily obtained. The weaknesses is that interactions between explanatory variables will greatly influence the performance of the model. Also, these variables need to be linear to use this approach. The plot below shows the threshold which we used to make decision and the method implemented to derive it is through calculating the euclidean distance. 
+
+```{r logit model}
+model.logit <- function(trn, tst=test, formula = formula.fit, dependent = is.open.name){
+  
+  features <- setdiff(names(trn), dependent)
+  YTrain <- trn[, dependent]; XTrain <- trn[, features]
+  YTest <- tst[, dependent]; XTest <- tst[, features]
+  
+  glm.fit <- suppressWarnings(glm(formula, data=trn, family=binomial()))
+  prob.training <- predict(glm.fit, type="response")
+  
+  pred.logit <- prediction(prob.training, YTrain)
+  perf.logit <- performance(pred.logit, measure="tpr", x.measure="fpr")
+  auc.logit <- as.numeric(performance(pred.logit, "auc")@y.values)
+  
+  fpr <- performance(pred.logit, "fpr")@y.values[[1]]
+  cutoff <- performance(pred.logit, "fpr")@x.values[[1]]
+  fnr <- performance(pred.logit,"fnr")@y.values[[1]]
+  
+  rate <- as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+  rate$distance <- sqrt((rate[,2])^2+(rate[,3])^2)
+  index <- which.min(rate$distance)
+  best.threshold <- rate$Cutoff[index]
+  
+  matplot(cutoff, cbind(fpr,fnr), type="l",lwd=2, xlab="Threshold",ylab="Error Rate")
+  legend("right", legend=c("FPR","FNR"), col=c(1,2), cex=1)
+  abline(v=best.threshold, col=3, lty=3, lwd=3)
+
+  pred.logit.trn <- predict(glm.fit,type="response")
+  pred.Ytr <- ifelse(pred.logit.trn > best.threshold, "Yes", "No")
+  logit.trn.err <- erate(pred.Ytr,YTrain)
+  
+  pred.logit.test <- predict(glm.fit, test[,-1], type="response")
+  pred.Yvl <- ifelse(pred.logit.test > best.threshold, "Yes", "No")
+  logit.test.err <- erate(pred.Yvl, YTest)
+  
+  return(list(c(logit.trn.err, logit.test.err), auc.logit, perf.logit))
+}
+```
+
+```{r logit run}
+result.logit <- model.logit(trn = trn)
+fill_results(result.logit, "Logistic Regression")
+# record; auc
+```
+
+## Support Vector Machine
+
+SVM primarily intends for binary classification and it is based on the idea of a separating hyperplane where hyperplane is a "flat affine subspace of dimension $p-1$". Only observations that lie on the margin or violate the margin affect the learned hyperplane boundary and these observations are called the "support vectors". Observations that lie on the correct side of the margin have no effect. In SVM, cost function C is a tuning parameter which controls bias-variance. When C is large, the margin is wide, and many observations will affect classification. Choice of kernel and kernel parameters $\gamma$ also affect bias-variance. 
+
+For this project, we love the accuracy that SVM provides us, but the algorithm itself largely depends on its regularization parameter, say kernel. Therefore, the parameters works for one dataset might perform poorly in another. Thus, we tuned the parameter for each dataset we sampled and making it extremely time-consuming. Even its error rate is pleasing, its time-consuming property need to be taken into consideration when choosing the final model. 
+
+```{r svm model}
+model.svm <- function(trn, tst= test, formula = formula.fit, dependent = is.open.name){
+  
+  ## standardize continuous variables 
+  trn %>% mutate_at(vars("stars", "review_count", "total_sentiment_score", "total_num_post"), 
+                      scale) -> trn
+  tst %>% mutate_at(vars("stars", "review_count", "total_sentiment_score", "total_num_post"), 
+                      scale) -> tst
+  
+  features <- setdiff(names(trn), dependent)
+  YTrain <- trn[, dependent]; XTrain <- trn[, features]
+  YTest <- tst[, dependent]; XTest <- tst[, features]
+  
+  ## creating new formula 
+  formula <- as.formula(create.formula(outcome.name = dependent, 
+                                         input.names = features))
+  
+  tune.out <- tune(svm, formula, data = trn, 
+                   scale = FALSE,
+                   kernel = "radial",                                   
+                   ranges = list(
+                     cost=c(0.01, 0.1, 1, 10)
+                     # gamma = 2^c(-8,-4,0,4)
+                     )
+                   )  #train to find the best cost
+  
+  tune.best <- tune.out$best.model
+  svm.trn.err <- erate(predict(tune.best, XTrain), YTrain)
+  svm.test.err <- erate(predict(tune.best, XTest), YTest)
+  
+  plot(tune.out, transform.x = log2, transform.y = log2)
+  
+  predict.svm <- predict(tune.best, XTest, decision.values=TRUE)
+  prob.svm <- attr(predict.svm,"decision.values")
+  pred.svm <- prediction(prob.svm, YTest)
+  perf.svm <- performance(pred.svm,"tpr","fpr")
+  auc.svm <- performance(pred.svm,"auc")@y.values[[1]]
+  # plot(tune.out, type = "perspective", theta = 120, phi = 45)
+  
+  return(list(c(svm.trn.err, svm.test.err), auc.svm, perf.svm))
+}
+```
+
+```{r svm run}
+# result.svm <- model.svm(trn = trn.dummies, tst = test.dummies) # 0.2890 0.2835
+# save(result.svm, file = "result_svm.rda")
+# ls()
+load(file = "../Data/result_svm.rda")
+fill_results(result.svm, "Support Vector Machine")
+# record; auc
+```
+
+## KNN
+
+KNN classify observations using the majority rules. "When given an unknown sample, a KNN classifier searches the pattern space for the KNN that are closest to the unknown sample" (Yeh & Lien). Closeness is defined in terms of distance and an unknown sample is assigned to its closest neighbor by distance. 
+
+Overall speaking, the KNN is relatively precise in predicting the labels. We love KNN because we do not need to build a predictive model before classification. Instead, it directly calculates the distance between the training set and K nearest neighbors. Then the label will be predicted as the most frequentist label appeared among the neighbors. 
+Meanwhile, this is also a drawback, for that as the training sample size increases, its processing time also increases dramatically. In addition, the curse of dimensionality in classification is not negligible. We often find that the closest neighbor is usually "far away" because the density of the training samples decreased exponentially when we increased the dimensionality. 
+
+For this project, to avoid the curse and the overfitting problem coming along with it, we first cross-validated over the current training model and find the best number of neighbors to apply to the formal training model. We also added in the scale parameter so as to expedite the processing time. Also, for efficiency purpose, we trained the model with 200 trees at last. 
+
+```{r knn model}
+model.knn <- function(trn, tst = test, dependent = is.open.name){
+  
+  features <- setdiff(names(trn), dependent)
+  YTrain <- trn[, dependent]; XTrain <- trn[, features]
+  YTest <- tst[, dependent]; XTest <- tst[, features]
+  
+  ## Creating new formula 
+  names <- names(trn)
+  formula <- as.formula(create.formula(outcome.name = dependent, 
+                                         input.names = features))
+  
+  control <- trainControl(method  = "cv", number  = 5)
+  garbage <- capture.output(fit <- train(formula,
+                                   method     = "knn",
+                                   tuneGrid   = expand.grid(k = 1:10),
+                                   trControl  = control,
+                                   preProcess = "scale",
+                                   metric     = "Accuracy",
+                                   data       = trn))
+  
+  pred.YTrn <- knn(train=XTrain, test=XTrain, cl=YTrain, k=fit$bestTune$k)
+  pred.YTest <- knn(train=XTrain, test=XTest, cl=YTrain, k=fit$bestTune$k)
+  knn.trn.err <- erate(pred.YTrn, YTrain)
+  knn.test.err <- erate(pred.YTest, YTest)
+  
+  fit.knn <- knn(train=XTrain, test=XTest, cl=YTrain, k=fit$bestTune$k, prob = TRUE)
+  prob <- attr(fit.knn, "prob")
+  prob.knn <- 2*ifelse(fit.knn == "-1", 1-prob, prob) - 1
+  pred.knn <- prediction(prob.knn, YTest)
+  perf.knn <- performance(pred.knn, "tpr", "fpr")
+  auc.knn <- performance(pred.knn,"auc")@y.values[[1]]
+  
+  return(list(c(knn.trn.err, knn.test.err), auc.knn, perf.knn))
+}
+```
+
+```{r knn run}
+result.knn <- model.knn(trn = trn.dummies, tst = test.dummies)
+fill_results(result.knn, "KNN")
+# record; auc
+```
+
+## Naive Bayes
+
+Naive Bayes is a probabilistic classifier that makes classifications using posterior  decision rule in a Bayesian setting. Naive Bayes classifiers are a collection of classification algorithms based on Bayes’ Theorem. It is not a single algorithm but a family of algorithms where all of them share a common principle, i.e. every pair of features being classified is independent of each other. Bayes’ Theorem finds the probability of an event occurring given the probability of another event that has already occurred and teh theory is mathematically stated below:
+$$P(A|B)=\frac{P(B|A)P(A)}{P(B)}$$
+In addition, for precessing efficiency, we scaled and center the data. 
+```{r nb model, include=F}
+# features <- setdiff(names(trn.dummies), is.open.name)
+#   YTrain <- trn.dummies[, is.open.name]; XTrain <- trn.dummies[, features]
+#   YTest <- test.dummies[, is.open.name]; XTest <- test.dummies[, features]
+#   
+#   formula <- as.formula(create.formula(outcome.name = is.open.name, 
+#                                          input.names = features))
+#   
+# NBclassfier = naiveBayes(formula, data=trn.dummies)
+#   
+#   trainPred=predict(NBclassfier, newdata = trn.dummies, type = "class")
+#   trainTable=table(YTrain, trainPred)
+#   testPred=predict(NBclassfier, newdata=test.dummies, type="class")
+#   testTable=table(YTest, testPred)
+#   trainAcc=(trainTable[1,1]+trainTable[2,2])/sum(trainTable)
+#   testAcc=(testTable[1,1]+testTable[2,2])/sum(testTable)
+#   # message("Accuracy")
+```
+
+```{r nb h2o model}
+model.nb.h2o <- function(trn, tst = test, dependent = is.open.name){
+  
+  trn %>%
+  filter(!!as.name(dependent) == "Yes") %>%
+  select_if(is.numeric) %>%
+  cor() %>%
+  corrplot::corrplot()
+  
+  sink("trash.txt")
+  library(h2o)
+  h2o.no_progress()
+  h2o.init()
+  sink()
+  
+  # do a little preprocessing
+  preprocess <- preProcess(trn, method = c("BoxCox", "center", "scale", "pca"))
+  train_pp   <- predict(preprocess, trn)
+  test_pp    <- predict(preprocess, tst)
+  
+  # convert to h2o objects
+  train_pp.h2o <- train_pp %>%
+    mutate_if(is.factor, factor, ordered = FALSE) %>%
+    as.h2o()
+  test_pp.h2o <- test_pp %>%
+    mutate_if(is.factor, factor, ordered = FALSE) %>%
+    as.h2o()
+  
+  # get new feature names --> PCA preprocessing reduced and changed some features
+  y <- dependent
+  x <- setdiff(names(train_pp.h2o), y)
+  
+  # create tuning grid
+  hyper_params <- list(
+    laplace = seq(0, 5, by = 0.5)
+    )
+  
+  # build grid search 
+  grid <- h2o.grid(
+    algorithm = "naivebayes",
+    grid_id = "nb_grid",
+    x = x, 
+    y = y, 
+    training_frame = train_pp.h2o, 
+    nfolds = 10,
+    hyper_params = hyper_params
+    )
+  
+  # Sort the grid models by mse
+  sorted_grid <- h2o.getGrid("nb_grid", sort_by = "accuracy", decreasing = TRUE)
+  # sorted_grid
+  best_h2o_model <- sorted_grid@model_ids[[1]]
+  best_model <- h2o.getModel(best_h2o_model)
+  
+  # confusion matrix of best model
+  # h2o.confusionMatrix(best_model)
+  
+  auc <- h2o.auc(best_model, xval = TRUE)
+  fpr <- h2o.performance(best_model, xval = TRUE) %>% h2o.fpr() %>% .[['fpr']]
+  tpr <- h2o.performance(best_model, xval = TRUE) %>% h2o.tpr() %>% .[['tpr']]
+  data.frame(fpr = fpr, tpr = tpr) -> perf.nb
+  #   ggplot(aes(fpr, tpr) ) +
+  #   geom_line() + 
+  #   ggtitle( sprintf('AUC: %f', auc) )
+  
+  # evaluate on test set
+  # h2o.performance(best_model, newdata = test_pp.h2o)
+  
+  # predict new data
+  # train model
+  h2o.predict(best_model, newdata = train_pp.h2o) ->pred.h2o.nb.trn
+  erate(as.vector(pred.h2o.nb.trn$predict), trn[, is.open.name]) -> nb.trn.err
+  h2o.predict(best_model, newdata = test_pp.h2o) ->pred.h2o.nb.test
+  erate(as.vector(pred.h2o.nb.test$predict), tst[, is.open.name]) -> nb.test.err
+  
+  # shut down h2o
+  # h2o.removeAll()
+  h2o.shutdown(prompt = FALSE)
+  return(list(c(nb.trn.err, nb.test.err), auc, perf.nb))
+}
+```
+
+```{r nb run, message=FALSE, warning=FALSE}
+# trn test 0.2925 0.2885
+# dummies 0.296625 0.280000
+
+# result.nb <- model.nb.h2o(trn = trn.dummies, tst = test.dummies)
+# save(result.nb, file = "../Data/result_nb.rda")
+# ls()
+load(file = "../Data/result_nb.rda")
+fill_results(result.nb, "Naive Bayes")
+# record; auc
+```
+
+\newpage
+# Results
+## Error Table
+```{r kable record}
+knitr::kable(record, digits = 3, caption = "Errors")
+```
+
+## ROC Curve
+In addition to compare performance of different models with test and training errors, we will use ROC curves and area under the curve (AUC) to compare performances of different classifiers in `R`. Based on errors and curves, the "best" model we selected from six methods analyzed in this project is Naive Bayes and we will validate our conclusion using results obtained before.  
+
+```{r auc table}
+apply(auc, 1, round, 2) -> auc.rounded
+sapply(ls.models, function(model.name){paste0(model.name, " = ",
+                                              auc.rounded[model.name, ])}) -> ls.models.auc
+knitr::kable(auc, digits = 2, caption = "Area Under the Curve")
+```
+
+```{r roc curves, fig.cap="ROC Curves", fig.height=3.6, fig.width=5.3}
+# Classification tree
+plot(result.tree[[3]], col='pink',lwd = 2, main="ROC Curves")
+legend('bottomright', ls.models.auc, 
+       lwd=c(1, 1), 
+       col=c("pink","plum",'palegreen', 'skyblue', 'orange', 'grey'), cex = 0.6)
+
+# random forest 
+plot(result.rf[[3]], col='plum',lwd = 2, add=TRUE)
+
+# logistic regression 
+plot(result.logit[[3]], col='palegreen', add=TRUE, lwd = 2)
+
+# svm
+plot(result.svm[[3]], col='skyblue', add=TRUE, lwd = 2)
+
+# knn
+plot(result.knn[[3]], col='orange', add=TRUE, lwd = 2)
+
+# naive bayes
+lines(result.nb[[3]], col = 'grey', lty=1, lwd = 2)
+```
+
+# Discussion
+
+We will first focus on comparing methods of random forest and classification trees. As comparing the train errors of classification tree and random forest, We find out that the training error is way much more smaller than that of the tree model, and apparentlyl there is a overfitting problem with the random forest classifier. The test error rate of random forest is higher than that of classification tree. Literally, random forest should be a better method than classification tree because it constructs many classification trees and the randomness within random forest makes it a more robust classifier than a single tree. However, it is not the case for our project. 
+
+We then continue to compare other models. As shown above, the ROC curves of logistic Regression Model has the margest area under the curve and yet its predicting accuracy is the worst. As for Support Vector Machine, KNN and Naive Bayes, KNN has comparatively higher test error rate and a lower training error. In Table AUC, we see that all models have similar values in both training and test errors except that random forest has an extremely small train error as compare to those of other models. Naive Bayes and Support Vector Machine was quite similar in both error rates. If taking time consumption into consideration, then naive bayes out performed the svm. Therefore, we would say that naive bayes is the best method out of five classifiers we implemented in this project.
+
+
+# Conclusion  
+
+Given that our best model, Naïve Bayes, can predict whether a restaurant is open or not nearly 80%, we conclude that stars, review_count, and sentimental scores of review does not have great impacts on local restaurants’ sustainability. Of course, we could improve our model by incorporating other variables being left out now - attribute variables from business and influencer variable and others from user data – to buttress or modify our intermediate conclusion. 
+
+Nonetheless, this does not mean that it is not useful at all to a local business. Business owner may refer to those reviews to improve their businesses. Standing from business side, if we can make the best use out of all these comments from customers, those information can provide direct suggestion for business to improve their food and services, instead of sending out survey to get customers’ recommendation. On the other hand, good reviews also serve the purpose in helping a business advertise for free, especially reviews from users who are considered as influencers with greater power in advertising for any business.  
+
+
+## Limitations and Uncertainties
+
+Since our datasets are too huge, it is very time-consuming and inefficient when we were trying to further explore each dataset by manipulating several datasets at the same time. Even though we scaled down our topic by only exploring three major datasets for this project, we didn't have enough time fully examining our topic while trying different methods and understanding the correlation among different variables. One of our limitations that may affect our progress would be our laptops themselves. We encoutered problems like lack of space for downloading certain datasets, taking excessive time loading and knitting reports, which all significantly affected our progress for this project within a limited time frame.
+
+For the investigation of reviews, we only focused on what kind of information that reviews could provide and how those information could potentially help in business sustainability, but due to limitation of time we haven’t investigated potential patterns from reviews for different categories of restaurants, e.g. restaurants in different locations other than Arizona and Nevada. Additionally, we mainly depended on the result from apply lexicons to detect the sentiment from text, however, since some of the English words are neutral, it may fail to be included in lexicons and therefore, the sentimental score may not be 100% accurate representation of every single word in each review. 
+
+In addition to that, we did not have time to deal with the fake or misclassified reviews. We merely took the review data as perfect. By mean perfect, we naïvely assume that there are no such thing as fake or misclassified reviews. Having said this, we should take those into consideration for the future investigation. For business data, we did not consider the competitiveness or bundle items. In other words, we did not consider the competitiveness of each location. For instance, having a one dominating restaurant, take Absolute Bagel in Upper West as an example, other bakeries or related restaurants would be influenced. It is norm that people do not want to have another bakery after having bagels. Yet, the situation changes 180 degree. For café or juice restaurants that people may go after or may want to have it with bagel if they do not dine inside, then having Absolute Bagel next door would be beneficial to them. In short, we did not consider the location when we were investigating if Yelp is helpful in terms of sustainability. 
+
+Lastly, we should keep in mind that those reviews and stars may not represent the actual customers because it is norm that people with extreme cases, say extremely bad or good experiences, would write out reviews or rate the restaurants. In other words, we do miss out majority of people whose opinions are as valuable as the ones who did write reviews and rate. 
+
+
+## Areas of Future Investigation
+
+Since our topic is very broad, to further investigate whether Yelp does help businesses' sustainability, there will be a lot of other subtopics we need to explore to make a comprehensive conclusion. If we have more time, we will analyze  how do location, attributes, and opening hour of the restaurants affect their reviews, star rate, sentiment score and, survival ratio. Intuitively, a good location, a comfortable and clean environment, and attributes like “good for party” or “good for child” should positively affect a business's reviews, which may enhance sustainability in the long term. We will also include influencers into our model and see if they do have a more significant impact on the businesses. Also, we should take the fake and misclassified reviews into consideration for the future investigation. 
+
+Moreover, it will be a good idea to obtain data from another platform or app that's similar to Yelp and apply similar methods we used on Yelp to the different dataset, and then conduct a comparison among the two to see which one provides the most useful and accurate information that could improve our analysis and model in predicting the “is_open” label. 
+
+Having all these ready, we would have a better understanding whether spending extra time to deal with Yelp users or even to create an account to be visible online is worth it in terms of sustaining a local restaurant as well as more concrete conclusion. 
+
+
+
+# Miscellaneous
+
+## Reference
+Software: R studio \newline
+
+Yeh, I. C., & Lien, C. H. (2009). *The comparisons of data mining techniques for the predictive accuracy of probability of default of credit card clients*. Expert Systems with Applications, 36(2), 2473-2480 \newline
+
+UCI Machine Learning Repository <https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients> \newline
+
+Background information: Seven Pillars Institue
+<http://sevenpillarsinstitute.org/case-studies/taiwans-credit-card-crisis> \newline
+
+The reference of Random Forest can be found at  
+<http://statweb.stanford.edu/~jtaylo/courses/stats202/ensemble.html>  \newline
+
+Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani An Introduction to Statistical Learning, Springer, 2014 <http://www-bcf.usc.edu/~gareth/ISL/ISLR%20Seventh%20Printing.pdf> \newline
+
+Garrett Grolemund and Hadley Wickham R for Data Science <http://r4ds.had.co.nz/> \newline
+
+Principal component analysis: <https://en.wikipedia.org/wiki/Principal_component_analysis>
+
+Cross Validation: <https://www.cs.cmu.edu/~schneide/tut5/node42.html>
